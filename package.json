@@ -57,22 +57,22 @@
 	"module": "./ion.js",
 	"exports": {
         ".": {
-			"default": "./ion.js",
 			"import": "./ion.js",
 			"node": "./ion.js",
 			"require": "./ion.js",
             "types": {
-                "default": "./index.d.ts"
-            }
+				"default": "./index.d.ts"
+            },
+			"default": "./ion.js"
         },
         "./server": {
-            "default": "./server/index.js",
 			"import": "./server/index.js",
 			"node": "./server/index.js",
 			"require": "./server/index.js",
             "types": {
-                "default": "./server/index.d.ts"
-            }
+				"default": "./server/index.d.ts"
+            },
+			"default": "./server/index.js"
         }
     }
 }
