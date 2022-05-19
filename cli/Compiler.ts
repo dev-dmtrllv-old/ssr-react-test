@@ -6,7 +6,7 @@ export class Compiler
 {
 	private static createConfig(config: CompilerConfig, isServer: boolean): webpack.Configuration
 	{
-		const appEntries = isServer ? [Object.keys(config.entries)] : [];
+		const appEntries = isServer ? Object.keys(config.entries) : [];
 
 		const libOptions = isServer ? {} : {
 			library: {
@@ -68,10 +68,10 @@ export class Compiler
 			},
 			plugins: [
 				new DefinePlugin({
-					env: {
+					env: JSON.stringify({
 						isDev: config.dev,
-					},
-					appEntries
+						appEntries
+					})
 				}),
 				new ForkTsCheckerWebpackPlugin({
 					typescript: {
@@ -115,7 +115,6 @@ export class Compiler
 
 		this.clientConfig = Compiler.createConfig(config, false);
 		this.serverConfig = Compiler.createConfig(config, true);
-		// this.dllConfig = Compiler.createDllConfig();
 	}
 
 	public updateName(name: string)

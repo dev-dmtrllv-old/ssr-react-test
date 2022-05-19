@@ -1,6 +1,6 @@
 cli-dist
 node_modules
-server
+/server
 index.d.ts
 ion.js
 ion.js.map

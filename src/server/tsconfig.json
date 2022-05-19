@@ -1,0 +1,25 @@
+{
+	"compilerOptions": {
+		"jsx": "react",
+		"allowSyntheticDefaultImports": true,
+		"esModuleInterop": true,
+		"exactOptionalPropertyTypes": true,
+		"experimentalDecorators": true,
+		"strictBindCallApply": true,
+		"strictFunctionTypes": true,
+		"strictNullChecks": true,
+		"strictPropertyInitialization": true,
+		"target": "ES5",
+		"module": "CommonJS",
+		"moduleResolution": "Node",
+		"outDir": "../../server",
+		"rootDir": ".",
+		"declaration": true,
+		"declarationDir": "../../server"
+	},
+	"include": ["./**/*"],
+	"exclude": [
+		"../../node_modules/**/*",
+		"../../types/server/**/*"
+	]
+}

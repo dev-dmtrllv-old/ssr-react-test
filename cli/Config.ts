@@ -2,6 +2,8 @@ export class Config
 {
 	private source: ConfigSource;
 
+	public get rawSource() { return JSON.stringify(this.source); }
+
 	public constructor(source: ConfigSource)
 	{
 		this.source = source;

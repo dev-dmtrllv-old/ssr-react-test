@@ -85,6 +85,11 @@ const createConfig = (name, entry, outDir, tsConfigPath = "tsconfig.json", dev =
 				typescript: {
 					mode: "write-references"
 				}
+			}),
+			new webpack.DefinePlugin({
+				env: {
+					isDev: dev
+				}
 			})
 		],
 		externals: isServer ? [nodeExternals()] : {

@@ -79,29 +79,40 @@ export class App
 		});
 	}
 
-	public watch()
+	public watch(onCompiledCallback: () => any)
 	{
+		const onCompiled = () => 
+		{
+			fs.writeFileSync(this.resolvePath("dist", "ion.config.json"), this.config.rawSource, "utf-8");
+
+			onCompiledCallback();
+		}
+
+		if(this.compiler.isWatching)
+			return;
+
 		this.watchResource("ion.config.json", "config", (data) => 
 		{
 			this.config.reset(data);
 			this.compiler.updateAppEntries(this.config.parsedEntries);
 			this.compiler.updateServerEntry(this.config.serverEntry);
-			this.compiler.watch();
+			
+			this.compiler.watch(onCompiled);
 		});
 
 		this.watchResource("tsconfig.json", "tsConfig", () => 
 		{
 			this.compiler.updateAliases(this.getAliases())
-			this.compiler.watch();
+			this.compiler.watch(onCompiled);
 		});
 
 		this.watchResource("package.json", "pkg", (data) => 
 		{
 			this.compiler.updateName(data.name);
-			this.compiler.watch();	
+			this.compiler.watch(onCompiled);
 		});
 
-		this.compiler.watch();
+		this.compiler.watch(onCompiled);
 	}
 
 	private resolvePath = (...parts: string[]) => path.resolve(this.projectPath, ...parts);

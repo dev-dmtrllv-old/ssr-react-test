@@ -4,7 +4,7 @@ import * as path from "path";
 
 import { ChildProcess, fork } from "child_process";
 
-export default class Watch extends Command
+export default class Start extends Command
 {
 	private serverProc: ChildProcess | null = null;
 
@@ -13,23 +13,12 @@ export default class Watch extends Command
 		return "none";
 	}
 
-	private restartServer()
-	{
-		if(this.serverProc)
-			this.serverProc.kill();
-
-		const cwd = path.resolve(App.get().projectPath, "dist");
-		const serverFile = path.resolve(App.get().projectPath, "dist", "main.js");
-		this.serverProc = fork(serverFile, { cwd, stdio: "inherit" });
-	}
-
 	protected onRun()
 	{
-		App.get().watch(() => 
-		{
-			console.log(`Compiled :D\n${this.serverProc ? "Res" : "S"}tarting server...`);
-			this.restartServer();
-		});
+		const cwd = path.resolve(App.get().projectPath, "dist");
+		const serverFile = path.resolve(App.get().projectPath, "dist", "main.js");
+		const [,,,...args] = process.argv;
+		const proc = fork(serverFile, { cwd, stdio: "inherit", env: { ...process.env, args: args.join(" ") }, });
 	}
 }
 
