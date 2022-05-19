@@ -1,0 +1,26 @@
+{
+	"compilerOptions": {
+		"allowSyntheticDefaultImports": true,
+		"esModuleInterop": true,
+		"exactOptionalPropertyTypes": true,
+		"experimentalDecorators": true,
+		"strictBindCallApply": true,
+		"strictFunctionTypes": true,
+		"strictNullChecks": true,
+		"strictPropertyInitialization": true,
+		"target": "ES5",
+		"module": "CommonJS",
+		"moduleResolution": "Node",
+		"outDir": ".",
+		"rootDir": "./src",
+		"declaration": true,
+		"declarationDir": "."
+	},
+	"include": [
+		"./src/**/*",
+		"types/server"
+	],
+	"exclude": [
+		"./src/server"
+	]
+}

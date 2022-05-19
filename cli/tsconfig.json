@@ -1,0 +1,18 @@
+{
+	"compilerOptions": {
+		"allowSyntheticDefaultImports": true,
+		"esModuleInterop": true,
+		"exactOptionalPropertyTypes": true,
+		"experimentalDecorators": true,
+		"strictBindCallApply": true,
+		"strictFunctionTypes": true,
+		"strictNullChecks": true,
+		"strictPropertyInitialization": true,
+		"target": "ES6",
+		"module": "CommonJS",
+		"moduleResolution": "Node",
+		"outDir": "../cli-dist",
+		"rootDir": ".",
+		"declaration": false
+	}
+}
