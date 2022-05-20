@@ -119,7 +119,7 @@ const createConfig = (name, entry, outDir, tsConfigPath = "tsconfig.json", dev =
 
 const watch = (name, entry, outDir, tsConfigPath = "tsconfig.json", dev = false, lib = false, isServer = false, watchCallback = () => { }) =>
 {
-	webpack(createConfig(name, entry, outDir, tsConfigPath, dev, lib, isServer)).watch({}, (err, stats) => 
+	webpack(createConfig(name, entry, outDir, tsConfigPath, dev, lib, isServer)).watch({ followSymlinks: true }, (err, stats) => 
 	{
 		if (err)
 		{

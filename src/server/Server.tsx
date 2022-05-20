@@ -1,8 +1,8 @@
 import { networkInterfaces } from "os";
-import { AppComponents, Config, ConfigAppInfo, getAppComponents, getConfig } from "./Config";
+import { AppComponents, ConfigAppInfo, getAppComponents, getConfig } from "./Config";
 import express, { Application } from "express";
-import ReactDOMServer from "react-dom/server";
-import React from "react";
+import { Renderer, RendererType } from "./Renderer";
+import path from "path";
 
 export class Server
 {
@@ -38,7 +38,7 @@ export class Server
 
 	public static async init()
 	{
-		const appComponents = await getAppComponents();
+		const appComponents = getAppComponents();
 		this._instance = new Server(appComponents);
 		return this._instance;
 	}
@@ -55,12 +55,16 @@ export class Server
 	public readonly port: number;
 	public readonly appComponents: Readonly<AppComponents>;
 
+	private readonly renderers: { [key: string]: RendererType<any>; } = {};
+
 	private constructor(appComponents: AppComponents)
 	{
 		const { server, apps } = getConfig();
 		this.host = server?.host || Server.getDefaultHost();
 		this.port = server?.port || 8080;
 		this.express = express();
+
+		this.express.use(express.static(path.resolve(process.cwd(), "public")));
 
 		this.appComponents = appComponents;
 
@@ -69,6 +73,7 @@ export class Server
 		for(const name in apps)
 		{
 			let url = apps[name].url;
+
 			if(url === "/" || url === "*")
 				globalApp = name;
 			else
@@ -76,6 +81,8 @@ export class Server
 				url = url.endsWith("*") ? url : `${url}*`;
 				this.express.get(url, this.onAppRoute(name, apps[name]));
 			}
+
+			this.setRenderer(name, Renderer);
 		}
 
 		if(globalApp)
@@ -87,8 +94,14 @@ export class Server
 		return (req: express.Request, res: express.Response) =>
 		{
 			const Component = this.appComponents[appName];
-			res.send(ReactDOMServer.renderToStaticMarkup(React.createElement(Component)))
+			const renderer = new this.renderers[appName](Component, req, res);
+			res.send(renderer.render(req, res));
 		};
+	}
+
+	public setRenderer<T extends Renderer>(appName: string, rendererClass: RendererType<T>)
+	{
+		this.renderers[appName] = rendererClass;
 	}
 
 	public start(callback: () => any = () => {})
@@ -100,3 +113,4 @@ export class Server
 		});
 	}
 }
+

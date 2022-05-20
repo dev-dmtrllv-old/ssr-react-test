@@ -1,6 +1,5 @@
 import * as fs from "fs";
 import * as path from "path";
-import { TsConfigSourceFile } from "typescript";
 import { Compiler } from "./Compiler";
 import { Config, ConfigSource } from "./Config";
 
@@ -79,6 +78,18 @@ export class App
 		});
 	}
 
+	public build(onBuild: () => any)
+	{
+		const onCompiled = () => 
+		{
+			fs.writeFileSync(this.resolvePath("dist", "ion.config.json"), this.config.rawSource, "utf-8");
+
+			onBuild();
+		}
+
+		this.compiler.build(onCompiled);
+	}
+
 	public watch(onCompiledCallback: () => any)
 	{
 		const onCompiled = () => 
@@ -90,6 +101,9 @@ export class App
 
 		if(this.compiler.isWatching)
 			return;
+
+		// fs.watch(this.resolvePath("node_modules", "ion", "ion.js"), {  }, () => { this.compiler.watch(onCompiled); });
+		// fs.watch(this.resolvePath("node_modules", "ion", "server"), {  }, () => { this.compiler.watch(onCompiled); });
 
 		this.watchResource("ion.config.json", "config", (data) => 
 		{

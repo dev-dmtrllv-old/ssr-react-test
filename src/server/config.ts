@@ -1,36 +1,37 @@
 import * as path from "path";
 import * as fs from "fs";
 
+const g: any = global;
+g.window = {};
+g.self = {};
+
+let vendor: (id: number) => any = () => { };
+
 let config = JSON.parse(fs.readFileSync(path.resolve(process.cwd(), "ion.config.json"), "utf-8"));
 
 export const getConfig = (): Config => config;
 
-export const getAppComponents = async () =>
+export const getAppComponents = () =>
 {
-	const g: any = global;
-	
-	g.window = {};
-	g.self = {};
-
 	const distDir = process.cwd();
-	
+	const manifest: DllManifest = JSON.parse(fs.readFileSync(path.resolve(distDir, "public/js/vendors-manifest.json"), "utf-8"));
+	vendor = __non_webpack_require__(path.resolve(distDir, "./public/js/vendors.bundle.js"));
+	global[manifest.name] = vendor;
+	global.window[manifest.name] = vendor;
+	global.self[manifest.name] = vendor;
+
 	const apps: AppComponents = {};
 
-	__non_webpack_require__(path.resolve(distDir, "./public/js/runtime.bundle.js"));
-	__non_webpack_require__(path.resolve(distDir, "./public/js/vendors.bundle.js"));
-	
-	for(const name in config.apps)
+	for (const name in config.apps)
 	{
 		try
 		{
-			__non_webpack_require__(path.resolve(distDir, "public/js", `${name}.bundle.js`));
+			const appModule = __non_webpack_require__(path.resolve(distDir, "public/js", `${name}.bundle.js`));
 
-			if (g.umdApp)
-				apps[name] = g.umdApp;
-			
-			g.umdApp = undefined;
+			if (appModule.default)
+				apps[name] = appModule.default;
 		}
-		catch(e: any)
+		catch (e: any)
 		{
 			console.warn(e.message);
 		}
@@ -38,8 +39,6 @@ export const getAppComponents = async () =>
 
 	return apps;
 }
-
-
 
 export type Config = {
 	apps: {
@@ -59,5 +58,26 @@ export type ConfigAppInfo = {
 };
 
 export type AppComponents = {
-    [key: string]: React.FC<{}>;
+	[key: string]: IonAppComponent;
+};
+
+export type IonAppComponent = {
+	render: () => void;
+	resolve: () => void;
+	renderToString: () => string;
+};
+
+
+type DllManifest = {
+	name: string;
+	content: {
+		[key: string]: {
+			id: number;
+			buildMeta: {
+				exportsType: string;
+				defaultObject: string;
+			};
+			exports: string[];
+		};
+	};
 };

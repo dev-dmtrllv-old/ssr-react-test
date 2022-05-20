@@ -14,13 +14,30 @@
 		"outDir": ".",
 		"rootDir": "./src",
 		"declaration": true,
-		"declarationDir": "."
+		"declarationDir": ".",
+		"jsx": "react",
+		"lib": [
+			"DOM",
+			"ES2015",
+			"ES2016",
+			"ES2017",
+			"ES2018",
+			"ES2019",
+			"ES2020",
+			"ES2021"
+		]
 	},
 	"include": [
-		"./src/**/*",
-		"types/server"
+		"./src/**/*"
 	],
 	"exclude": [
-		"./src/server"
+		"./src/server/**",
+		"./node_modules/**",
+		"./cli/**",
+		"./cli-dist/**",
+		"./scripts/**",
+		"./server/**",
+		"./utils/**",
+		"./*.d.ts"
 	]
 }

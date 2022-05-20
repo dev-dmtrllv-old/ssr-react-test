@@ -133,7 +133,6 @@ export abstract class Command<T = undefined>
 							}
 							argObj[k] = argObj[k].map(s => 
 							{
-								console.log(typeof s, t);
 								if (typeof s !== t)
 								{
 									if (t === "number")
