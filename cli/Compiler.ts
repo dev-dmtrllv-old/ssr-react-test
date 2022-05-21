@@ -1,40 +1,20 @@
-import webpack, { DefinePlugin, DllReferencePlugin, } from "webpack";
+import webpack, { DefinePlugin } from "webpack";
 import ForkTsCheckerWebpackPlugin from "fork-ts-checker-webpack-plugin";
 import nodeExternals from "webpack-node-externals";
-import fs from "fs";
-import path from "path";
-import rimraf from "rimraf";
 
-const VENDORS_MANIFEST_PATH = "public/js/vendors-manifest.json";
+import path from "path";
 
 export class Compiler
 {
-
-	private static createDllConfig(config: CompilerConfig): webpack.Configuration
+	private static createVendorsConfig(config: CompilerConfig): webpack.Configuration
 	{
 		return {
 			mode: config.dev ? "development" : "production",
-			entry: {
-				vendor: ["react-dom", "react"],
-			},
+			entry: path.resolve(__dirname, "../wrapper.js"),
 			output: {
 				filename: "vendors.bundle.js",
-				path: path.resolve(config.outPath, "public", "js"),
-				libraryTarget: "umd",
-				globalObject: "window",
-				library: {
-					type: "umd",
-					name: "vendors_lib"
-				},
-			},
-			plugins: [
-				new webpack.DllPlugin({
-					name: "vendors_lib",
-					path: path.resolve(config.outPath, VENDORS_MANIFEST_PATH),
-					context: path.resolve(config.outPath, ".."),
-					entryOnly: false
-				})
-			]
+				path: path.resolve(config.outPath, "public", "js")
+			}
 		};
 	}
 
@@ -48,22 +28,61 @@ export class Compiler
 				name: "App"
 			},
 			libraryTarget: "umd",
-			globalObject: "window",
+			globalObject: "this",
 		};
 
-		const options = isServer ? { target: "node", externalsPresets: { node: true } } : {};
+		const options: any = isServer ? { target: "node", externalsPresets: { node: true } } : {};
+
+		if (isServer)
+		{
+			options.entry = config.serverEntry || path.resolve(__dirname, "../server-entry.ts");
+		}
+		else
+		{
+			options.entry = config.entries;
+		}
+
+		const opt = !isServer ? {
+			optimization: {
+				splitChunks: {
+					chunks: "all",
+					cacheGroups: {
+						vendor: {
+							test: /[\\/]node_modules[\\/]/,
+							name: "vendors",
+							chunks: "all",
+							enforce: true,
+						}
+					}
+				}
+			}
+		} : {};
+
+		const plugins = isServer ? [] : [new webpack.optimize.LimitChunkCountPlugin({ maxChunks: 1 })];
+
+		const tsLoaders: any[] = [{
+			loader: "ts-loader",
+			options: {
+				transpileOnly: true,
+				experimentalWatchApi: true,
+			}
+		}];
+
+		if(!isServer)
+			tsLoaders.push(path.resolve(__dirname, "../dynamicImportPathLoader.js"));
 
 		return {
 			...options,
 			mode: config.dev ? "development" : "production",
 			name: config.name,
 			devtool: config.dev ? "source-map" : false,
-			entry: isServer ? config.serverEntry : config.entries,
 			output: {
+				clean: false,
 				filename: isServer ? `[name].js` : `js/[name].bundle.js`,
 				chunkFilename: isServer ? `[id].js` : `js/[name].[id].chunk.js`,
 				path: isServer ? config.outPath : `${config.outPath}/public`,
-				...libOptions
+				...libOptions,
+				publicPath: "/"
 			},
 			resolve: {
 				extensions: [".tsx", ".ts", ".js", ".jsx", ".json"],
@@ -77,20 +96,14 @@ export class Compiler
 					"stream": false,
 					"crypto": false,
 				},
-				symlinks: false,
+				symlinks: true,
 			},
 			module: {
 				rules: [
 					{
 						test: /\.(ts|js)x?$/,
 						exclude: /node_modules/,
-						use: {
-							loader: "ts-loader",
-							options: {
-								transpileOnly: true,
-								experimentalWatchApi: true,
-							}
-						},
+						use: tsLoaders,
 					},
 					{
 						test: /\.js$/,
@@ -110,16 +123,45 @@ export class Compiler
 					typescript: {
 						mode: "write-references"
 					}
-				})
+				}),
+				...plugins
 			],
 			experiments: {
 				topLevelAwait: true
 			},
-			externals: isServer ? [nodeExternals({ allowlist: ["react", "react-dom"] })] : {}
+			externals: isServer ? [
+				nodeExternals()
+			] : {
+				"react": {
+					commonjs: "react",
+					commonjs2: "react",
+					amd: "React",
+					root: "React"
+				},
+				"react-dom": {
+					commonjs: "react-dom",
+					commonjs2: "react-dom",
+					amd: "ReactDOM",
+					root: "ReactDOM"
+				},
+				"react-dom/client": {
+					commonjs: "react-dom/client",
+					commonjs2: "react-dom/client",
+					amd: "ReactDOM/client",
+					root: "ReactDOMClient"
+				},
+				"react-dom/server": {
+					commonjs: "react-dom/server",
+					commonjs2: "react-dom/server",
+					amd: "ReactDOM/server",
+					root: "ReactDOMServer"
+				}
+			},
+			...opt
 		};
 	}
 
-	private readonly dllConfig: webpack.Configuration = {};
+	private readonly vendorsConfig: webpack.Configuration = {};
 	private readonly clientConfig: webpack.Configuration = {};
 	private readonly serverConfig: webpack.Configuration = {};
 
@@ -137,7 +179,7 @@ export class Compiler
 	{
 		this.outPath = config.outPath;
 		this.isDev = config.dev || false;
-		this.dllConfig = Compiler.createDllConfig(config);
+		this.vendorsConfig = Compiler.createVendorsConfig(config);
 		this.clientConfig = Compiler.createConfig(config, false);
 		this.serverConfig = Compiler.createConfig(config, true);
 	}
@@ -163,57 +205,60 @@ export class Compiler
 		this.clientConfig.entry = entries;
 	}
 
-	public updateServerEntry(path: string)
+	public updateServerEntry(path?: string)
 	{
-		this.serverConfig.entry = path;
+		if (path)
+			this.serverConfig.entry = path;
+		else
+			delete this.serverConfig.entry;
 	}
 
-	private updateDllManifest()
-	{
-		const p = path.resolve(this.outPath, VENDORS_MANIFEST_PATH);
+	// private updateDllManifest()
+	// {
+	// 	const p = path.resolve(this.outPath, VENDORS_MANIFEST_PATH);
 
-		if (fs.existsSync(p))
-		{
-			const manifest = require(p);
-			if (!this.serverConfig.plugins)
-				this.serverConfig.plugins = [];
+	// 	if (fs.existsSync(p))
+	// 	{
+	// 		const manifest = require(p);
+	// 		if (!this.serverConfig.plugins)
+	// 			this.serverConfig.plugins = [];
 
-			if (!this.clientConfig.plugins)
-				this.clientConfig.plugins = [];
+	// 		if (!this.clientConfig.plugins)
+	// 			this.clientConfig.plugins = [];
 
-			const options = {
-				manifest,
-				context: path.resolve(this.outPath, "..")
-			};
+	// 		const options = {
+	// 			manifest,
+	// 			context: path.resolve(this.outPath, "..")
+	// 		};
 
-			if (this.serverConfigDllIndex > -1)
-				this.serverConfig.plugins[this.serverConfigDllIndex] = new DllReferencePlugin(options);
-			else
-			{
-				this.serverConfig.plugins.unshift(new DllReferencePlugin(options));
-				this.serverConfigDllIndex = 0;
-			}
+	// 		if (this.serverConfigDllIndex > -1)
+	// 			this.serverConfig.plugins[this.serverConfigDllIndex] = new DllReferencePlugin(options);
+	// 		else
+	// 		{
+	// 			this.serverConfig.plugins.unshift(new DllReferencePlugin(options));
+	// 			this.serverConfigDllIndex = 0;
+	// 		}
 
-			if (this.clientConfigDllIndex > -1)
-			{
-				this.clientConfig.plugins[this.clientConfigDllIndex] = new DllReferencePlugin(options);
-			}
-			else
-			{
-				this.clientConfig.plugins.unshift(new DllReferencePlugin(options))
-				this.clientConfigDllIndex = 0;
-			}
-		}
-	}
+	// 		if (this.clientConfigDllIndex > -1)
+	// 		{
+	// 			this.clientConfig.plugins[this.clientConfigDllIndex] = new DllReferencePlugin(options);
+	// 		}
+	// 		else
+	// 		{
+	// 			this.clientConfig.plugins.unshift(new DllReferencePlugin(options))
+	// 			this.clientConfigDllIndex = 0;
+	// 		}
+	// 	}
+	// }
 
 	private hasBuild = false;
 	private watchTimeout: NodeJS.Timeout | null = null;
 
 	public watch(onCompile: () => any = () => { })
 	{
-		const buildDll = () => new Promise<void>((res, rej) => 
+		const buildVendors = () => new Promise<void>((res, rej) => 
 		{
-			webpack(this.dllConfig, (err, stats) => 
+			webpack(this.vendorsConfig, (err, stats) => 
 			{
 				if (err)
 				{
@@ -223,7 +268,7 @@ export class Compiler
 				else
 				{
 					console.log(stats?.toString("minimal"));
-					this.updateDllManifest();
+					// this.updateDllManifest();
 					res();
 				}
 			});
@@ -231,15 +276,19 @@ export class Compiler
 
 		const startWatching = async () =>
 		{
-			const p = path.resolve(this.outPath, "public", "js", "vendor-manifest.json");
-
-			if (!fs.existsSync(p) || !this.hasBuild)
+			if (!this.hasBuild)
 			{
-				await buildDll();
+				console.log("building vendors...");
+				await buildVendors();
 				this.hasBuild = true;
 			}
 
-			this._watcher = webpack([this.clientConfig, this.serverConfig]).watch({ followSymlinks: true, ignored: ["package.json", "ion.config.json", "tsconfig.json", "dist"] }, (err, stats) => 
+			const configs: webpack.Configuration[] = [this.clientConfig];
+
+			if (this.serverConfig.entry)
+				configs.push(this.serverConfig);
+
+			this._watcher = webpack(configs).watch({ followSymlinks: true, ignored: ["package.json", "ion.config.json", "tsconfig.json", "dist"] }, (err, stats) => 
 			{
 				if (err)
 				{
@@ -251,20 +300,6 @@ export class Compiler
 				}
 
 				onCompile();
-			})
-
-			this._watcher.compiler.compilers[0].hooks.beforeCompile.tapAsync("clean", (p, cb) => 
-			{
-				const out = this.clientConfig.output!.path!;
-				const manifestPath = path.resolve(out, VENDORS_MANIFEST_PATH);
-				const manifest = fs.readFileSync(manifestPath, "utf-8");
-
-				rimraf.sync(path.resolve(out, "public"));
-
-				fs.mkdirSync(path.resolve(out, "public", "js"), { recursive: true });
-				fs.writeFileSync(manifestPath, manifest, "utf-8");
-
-				cb();
 			});
 		}
 
@@ -317,5 +352,5 @@ type CompilerConfig = {
 		[key: string]: string;
 	};
 	outPath: string;
-	serverEntry: string;
+	serverEntry?: string | undefined;
 };

@@ -2,6 +2,8 @@ import { Command } from "../Command";
 import path from "path";
 import fs from "fs";
 import { promisify } from "util";
+import { spawn } from "child_process";
+import os from "os";
 
 const initIonConfig = {
 	apps: {
@@ -144,7 +146,17 @@ export default class New extends Command<NewArgs>
 					writeFile("ion.config.json", JSON.stringify(initIonConfig, null, 4)),
 					writeFile("tsconfig.json", JSON.stringify(tsConfig, null, 4)),
 					writeFile("package.json", JSON.stringify(createPackageJson(args.name!), null, 4)),
-				]);				
+				]);
+
+				const npm = `npm${os.platform() === "win32" ? ".cmd" : ""}`
+
+				let p = spawn(npm, ["i"], { cwd: args.path!, stdio: "inherit" });
+
+				p.stdout = process.stdout;
+				p.stderr = process.stderr;
+				p.stdin = process.stdin;
+
+				p.on("exit", () => spawn(npm, ["i", path.resolve(__dirname, "../../"), "--save"], { cwd: args.path!, stdio: "inherit" }));
 			}
 		}
 	}

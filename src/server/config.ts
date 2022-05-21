@@ -1,44 +1,51 @@
 import * as path from "path";
 import * as fs from "fs";
 
-const g: any = global;
-g.window = {};
-g.self = {};
-
-let config = JSON.parse(fs.readFileSync(path.resolve(process.cwd(), "ion.config.json"), "utf-8"));
-
-export const getConfig = (): Config => config;
-
-export const getAppComponents = () =>
+export class AppConfig
 {
-	const distDir = process.cwd();
-	const manifest: DllManifest = JSON.parse(fs.readFileSync(path.resolve(distDir, "public/js/vendors-manifest.json"), "utf-8"));
-	const vendor = __non_webpack_require__(path.resolve(distDir, "./public/js/vendors.bundle.js"));
-	global[manifest.name] = vendor;
-	global.window[manifest.name] = vendor;
-	global.self[manifest.name] = vendor;
+	private readonly _data: ConfigData;
 
-	const apps: AppComponents = {};
+	public get data() { return this._data; }
 
-	for (const name in config.apps)
+	public constructor()
 	{
-		try
-		{
-			const appModule = __non_webpack_require__(path.resolve(distDir, "public/js", `${name}.bundle.js`));
-
-			if (appModule.default)
-				apps[name] = appModule.default;
-		}
-		catch (e: any)
-		{
-			console.warn(e.message);
-		}
+		this._data = JSON.parse(fs.readFileSync(path.resolve(process.cwd(), "ion.config.json"), "utf-8"));
 	}
 
-	return apps;
+	public loadAppComponents()
+	{
+		// const g: any = global;
+
+		// if (!g.window)
+		// 	g.window = {};
+
+		// if (!g.self)
+		// 	g.self = {};
+
+		const distDir = process.cwd();
+		
+		const apps: AppComponents = {};
+
+		for (const name in this.data.apps)
+		{
+			try
+			{
+				const appModule = __non_webpack_require__(path.resolve(distDir, "public/js", `${name}.bundle.js`));
+				// console.log(appModule);
+				if (appModule.default)
+					apps[name] = appModule.default;
+			}
+			catch (e: any)
+			{
+				console.error(e);
+			}
+		}
+
+		return apps;
+	}
 }
 
-export type Config = {
+export type ConfigData = {
 	apps: {
 		[name: string]: ConfigAppInfo;
 	};

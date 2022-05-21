@@ -16,7 +16,7 @@ const createConfig = (name, entry, outDir, tsConfigPath = "tsconfig.json", dev =
 			name,
 			type: "umd"
 		},
-		globalObject: 'this',
+		globalObject: "this",
 	};
 
 	const aliases = () =>
@@ -109,13 +109,13 @@ const createConfig = (name, entry, outDir, tsConfigPath = "tsconfig.json", dev =
 				commonjs: "react-dom/client",
 				commonjs2: "react-dom/client",
 				amd: "ReactDOM/client",
-				root: "ReactDOM/client"
+				root: "ReactDOMClient"
 			},
 			"react-dom/server": {
 				commonjs: "react-dom/server",
 				commonjs2: "react-dom/server",
 				amd: "ReactDOM/server",
-				root: "ReactDOM/server"
+				root: "ReactDOMServer"
 			}
 		},
 	};

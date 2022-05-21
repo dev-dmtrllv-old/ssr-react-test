@@ -1,5 +1,5 @@
 import { networkInterfaces } from "os";
-import { AppComponents, ConfigAppInfo, getAppComponents, getConfig } from "./Config";
+import { AppConfig, ConfigAppInfo } from "./Config";
 import express, { Application } from "express";
 import { Renderer, RendererType } from "./Renderer";
 import path from "path";
@@ -36,9 +36,9 @@ export class Server
 
 	private static _instance: Server | null = null;
 
-	public static async init<T extends Server = Server>(type: new (appComponents: AppComponents) => T = Server as any): Promise<T>
+	public static async init<T extends Server = Server>(type: new () => T = Server as any): Promise<T>
 	{
-		this._instance = new type(getAppComponents());
+		this._instance = new type();
 		return this._instance as T;
 	}
 
@@ -52,21 +52,22 @@ export class Server
 	public readonly express: Application;
 	public readonly host: string;
 	public readonly port: number;
-	public readonly appComponents: Readonly<AppComponents>;
+	public readonly appConfig: AppConfig;
 
 	private readonly renderers: { [key: string]: RendererType<any>; } = {};
 
-	protected constructor(appComponents: AppComponents)
+	protected constructor()
 	{
-		const { server, apps } = getConfig();
+		this.appConfig = new AppConfig();
+
+		const { apps, server } = this.appConfig.data;
+
 		this.host = server?.host || Server.getDefaultHost();
 		this.port = server?.port || 8080;
 		this.express = express();
-
+		
 		this.express.use(express.static(path.resolve(process.cwd(), "public")));
-
-		this.appComponents = appComponents;
-
+		
 		let globalApp: string = "";
 
 		for(const name in apps)
@@ -88,11 +89,13 @@ export class Server
 			this.express.get("*", this.onAppRoute(globalApp, apps[globalApp]));
 	}
 
-	private onAppRoute(appName: string, appInfo: ConfigAppInfo)
+	protected onAppRoute(appName: string, appInfo: ConfigAppInfo)
 	{
+		const appComponents = this.appConfig.loadAppComponents();
+
 		return (req: express.Request, res: express.Response) =>
 		{
-			const Component = this.appComponents[appName];
+			const Component = appComponents[appName] as any;
 			const renderer = new this.renderers[appName](Component, req, res);
 			res.send(renderer.render(req, res));
 		};

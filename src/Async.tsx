@@ -1,4 +1,5 @@
 import React from "react";
+import { cloneError } from "./utils/object";
 import { hash } from "./utils/string";
 
 export namespace Async
@@ -19,6 +20,51 @@ export namespace Async
 
 	export const useContext = () => React.useContext(Context);
 
+	const resolveComponent = async <Props extends {}, Data>(component: AsyncComponent<Props, Data>, props: Props) =>  
+	{
+		let data: Data | undefined = undefined;
+		let error: Error | undefined = undefined;
+
+		try
+		{
+			data = await component.resolver(props);
+		}
+		catch (e)
+		{
+			error = cloneError(e);
+		}
+
+		return {
+			data,
+			error,
+			isInvalidated: false,
+			isLoading: false,
+		};
+	}
+
+	export const resolveComponents = async (ctx: ContextType): Promise<DataMap> =>
+	{
+		const idMap: string[] = [];
+
+		const promises: Promise<any>[] = [];
+
+		for (const id in ctx.resolvingComponents)
+		{
+			const { component, props } = ctx.resolvingComponents[id];
+			idMap.push(id);
+			promises.push(resolveComponent(component, props));
+		}
+
+		let map: DataMap = {};
+
+		const responses = await Promise.all(promises);
+
+		for(let i = 0, l = idMap.length; i < l; i++)
+			map[idMap[i]] = responses[i];
+		
+		return map;
+	}
+
 	const createId = <Props extends {} = {}, Data = any>(resolver: Resolver<Props, Data>, component: React.FC<Props & ComponentData<Data>>): string =>
 	{
 		return `${hash(resolver.toString())}.${hash(component.toString())}`;
@@ -29,17 +75,17 @@ export namespace Async
 		return `${componentID}.${hash(JSON.stringify(props))}`;
 	}
 
-	const getData = <T extends any = any>(ctx: ContextType, id: string): Data<T> | undefined =>
+	const getData = <T extends any = any>(ctx: ContextType, id: string): AsyncData<T> | undefined =>
 	{
 		return ctx.data[id];
 	}
 
-	const resolveComponent = <P extends {}, Data>(ctx: ContextType, id: string, component: Component<P, Data>, props: P) =>
+	const addResolvingComponent = <P extends {}, Data>(ctx: ContextType, id: string, component: AsyncComponent<P, Data>, props: P) =>
 	{
 		ctx.resolvingComponents[id] = { component, props };
 	}
 
-	export const create = <Props extends {}, Data>(resolver: Resolver<Props, Data>, component: React.FC<Props & ComponentData<Data>>): Component<Props, Data> =>
+	export const create = <Props extends {}, Data>(resolver: Resolver<Props, Data>, component: React.FC<Props & ComponentData<Data>>): AsyncComponent<Props, Data> =>
 	{
 		const componentID = createId(resolver, component);
 
@@ -60,7 +106,7 @@ export namespace Async
 				}
 
 				if (props.prefetch)
-					resolveComponent(ctx, idRef.current, c, props);
+					addResolvingComponent(ctx, idRef.current, c, props);
 
 				return {
 					isInvalidated: false,
@@ -89,10 +135,11 @@ export namespace Async
 			const { cache, prefetch, ...rest } = props as AsyncProps & Props;
 
 			return React.createElement(component, { ...rest as any, ...state });
-		}) as unknown as Component<Props, Data>;
+		}) as unknown as AsyncComponent<Props, Data>;
 
 		c.id = componentID;
 		c.component = component;
+		c.resolver = resolver;
 
 		return c;
 	}
@@ -100,10 +147,11 @@ export namespace Async
 
 	type Resolver<Props extends {}, Data> = (data: Props & {}) => Data;
 
-	interface Component<Props extends {}, Data> extends React.FunctionComponent<Props & AsyncProps>
+	export interface AsyncComponent<Props extends {}, Data> extends React.FunctionComponent<Props & AsyncProps>
 	{
 		id: string;
 		component: React.FC<Props & ComponentData<Data>>;
+		resolver: Resolver<Props, Data>;
 	};
 
 	type AsyncProps = {
@@ -111,30 +159,30 @@ export namespace Async
 		prefetch?: boolean;
 	};
 
-	type ContextType = {
+	export type ContextType = {
 		data: DataMap;
 		resolvingComponents: ResolvingComponentsMap;
 	};
 
 	type DataMap = {
-		[key: string]: Data<any>;
+		[key: string]: AsyncData<any>;
 	};
 
 	type ResolvingComponentsMap = {
 		[key: string]: {
 			props: any;
-			component: Component<any, any>;
+			component: AsyncComponent<any, any>;
 		};
 	}
 
 	type ComponentData<T> = {
-		data?: T;
-		error?: Error;
+		data?: T | undefined;
+		error?: Error | undefined;
 		isLoading: boolean;
 		isInvalidated: boolean;
 	};
 
-	type Data<T> = ComponentData<T> & {
+	type AsyncData<T> = ComponentData<T> & {
 		cache?: CacheOptions;
 	};
 

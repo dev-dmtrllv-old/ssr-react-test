@@ -35,7 +35,7 @@ export class Config
 		if(e)
 			return e.startsWith("./") ? e : `./${e}`;
 		
-		return "./src/server/index.ts";
+		return e;
 	}
 }
 
