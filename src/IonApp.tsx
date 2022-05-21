@@ -8,7 +8,6 @@ export namespace Ion
 
 	export const createApp = (fc: React.FC<any>): IonAppComponent =>
 	{
-		
 		const c: IonAppComponent = {
 			render: () =>
 			{

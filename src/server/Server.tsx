@@ -36,11 +36,10 @@ export class Server
 
 	private static _instance: Server | null = null;
 
-	public static async init()
+	public static async init<T extends Server = Server>(type: new (appComponents: AppComponents) => T = Server as any): Promise<T>
 	{
-		const appComponents = getAppComponents();
-		this._instance = new Server(appComponents);
-		return this._instance;
+		this._instance = new type(getAppComponents());
+		return this._instance as T;
 	}
 
 	public static get(): Server
@@ -57,7 +56,7 @@ export class Server
 
 	private readonly renderers: { [key: string]: RendererType<any>; } = {};
 
-	private constructor(appComponents: AppComponents)
+	protected constructor(appComponents: AppComponents)
 	{
 		const { server, apps } = getConfig();
 		this.host = server?.host || Server.getDefaultHost();

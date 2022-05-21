@@ -110,6 +110,12 @@ const createConfig = (name, entry, outDir, tsConfigPath = "tsconfig.json", dev =
 				commonjs2: "react-dom/client",
 				amd: "ReactDOM/client",
 				root: "ReactDOM/client"
+			},
+			"react-dom/server": {
+				commonjs: "react-dom/server",
+				commonjs2: "react-dom/server",
+				amd: "ReactDOM/server",
+				root: "ReactDOM/server"
 			}
 		},
 	};

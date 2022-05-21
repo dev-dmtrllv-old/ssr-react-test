@@ -5,8 +5,6 @@ const g: any = global;
 g.window = {};
 g.self = {};
 
-let vendor: (id: number) => any = () => { };
-
 let config = JSON.parse(fs.readFileSync(path.resolve(process.cwd(), "ion.config.json"), "utf-8"));
 
 export const getConfig = (): Config => config;
@@ -15,7 +13,7 @@ export const getAppComponents = () =>
 {
 	const distDir = process.cwd();
 	const manifest: DllManifest = JSON.parse(fs.readFileSync(path.resolve(distDir, "public/js/vendors-manifest.json"), "utf-8"));
-	vendor = __non_webpack_require__(path.resolve(distDir, "./public/js/vendors.bundle.js"));
+	const vendor = __non_webpack_require__(path.resolve(distDir, "./public/js/vendors.bundle.js"));
 	global[manifest.name] = vendor;
 	global.window[manifest.name] = vendor;
 	global.self[manifest.name] = vendor;

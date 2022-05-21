@@ -102,9 +102,6 @@ export class App
 		if(this.compiler.isWatching)
 			return;
 
-		// fs.watch(this.resolvePath("node_modules", "ion", "ion.js"), {  }, () => { this.compiler.watch(onCompiled); });
-		// fs.watch(this.resolvePath("node_modules", "ion", "server"), {  }, () => { this.compiler.watch(onCompiled); });
-
 		this.watchResource("ion.config.json", "config", (data) => 
 		{
 			this.config.reset(data);

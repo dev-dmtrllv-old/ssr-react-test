@@ -1,7 +1,7 @@
 import { App } from "../App";
 import { Command } from "../Command";
 
-export default class Watch extends Command
+export default class Build extends Command
 {
 	public get argPattern(): "none"
 	{

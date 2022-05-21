@@ -1,8 +1,9 @@
-import webpack, { DefinePlugin, DllPlugin, DllReferencePlugin, } from "webpack";
+import webpack, { DefinePlugin, DllReferencePlugin, } from "webpack";
 import ForkTsCheckerWebpackPlugin from "fork-ts-checker-webpack-plugin";
 import nodeExternals from "webpack-node-externals";
-import * as fs from "fs";
+import fs from "fs";
 import path from "path";
+import rimraf from "rimraf";
 
 const VENDORS_MANIFEST_PATH = "public/js/vendors-manifest.json";
 
@@ -114,7 +115,7 @@ export class Compiler
 			experiments: {
 				topLevelAwait: true
 			},
-			externals: isServer ? [nodeExternals({ allowlist: ["react","react-dom"] })] : {}
+			externals: isServer ? [nodeExternals({ allowlist: ["react", "react-dom"] })] : {}
 		};
 	}
 
@@ -210,8 +211,6 @@ export class Compiler
 
 	public watch(onCompile: () => any = () => { })
 	{
-		// TODO: watch for vendor changes and rebuild the DLL bundle
-
 		const buildDll = () => new Promise<void>((res, rej) => 
 		{
 			webpack(this.dllConfig, (err, stats) => 
@@ -240,7 +239,7 @@ export class Compiler
 				this.hasBuild = true;
 			}
 
-			this._watcher = webpack([this.clientConfig, this.serverConfig]).watch({ followSymlinks: false, ignored: ["package.json", "ion.config.json", "tsconfig.json"] }, (err, stats) => 
+			this._watcher = webpack([this.clientConfig, this.serverConfig]).watch({ followSymlinks: true, ignored: ["package.json", "ion.config.json", "tsconfig.json", "dist"] }, (err, stats) => 
 			{
 				if (err)
 				{
@@ -254,28 +253,19 @@ export class Compiler
 				onCompile();
 			})
 
-			// this._watcher.compiler.compilers[0].hooks.beforeCompile.tapAsync("IonClean", (p, cb) => 
-			// {
-			// 	const out = this.clientConfig.output!.path!;
+			this._watcher.compiler.compilers[0].hooks.beforeCompile.tapAsync("clean", (p, cb) => 
+			{
+				const out = this.clientConfig.output!.path!;
+				const manifestPath = path.resolve(out, VENDORS_MANIFEST_PATH);
+				const manifest = fs.readFileSync(manifestPath, "utf-8");
 
-			// 	fs.readdirSync(out).forEach(dir => 
-			// 	{
-			// 		if (dir === "js")
-			// 		{
-			// 			fs.readdirSync(path.resolve(out, "js")).forEach(dir => 
-			// 			{
-			// 				if (dir !== "vendor-manifest.json")
-			// 					rimraf.sync(path.resolve(this.clientConfig.output!.path!, "js", dir));
-			// 			});
-			// 		}
-			// 		else
-			// 		{
-			// 			rimraf.sync(path.resolve(this.clientConfig.output!.path!, dir));
-			// 		}
-			// 	});
+				rimraf.sync(path.resolve(out, "public"));
 
-			// 	cb();
-			// });
+				fs.mkdirSync(path.resolve(out, "public", "js"), { recursive: true });
+				fs.writeFileSync(manifestPath, manifest, "utf-8");
+
+				cb();
+			});
 		}
 
 		if (this._watcher)
@@ -283,17 +273,17 @@ export class Compiler
 			console.log(`Restarting compiler...`);
 			this._watcher.close(() => 
 			{
-				if(this.watchTimeout)
+				if (this.watchTimeout)
 					clearTimeout(this.watchTimeout);
-				this.watchTimeout = setTimeout(async () => { await startWatching(); this.watchTimeout = null;  }, 200);
+				this.watchTimeout = setTimeout(async () => { await startWatching(); this.watchTimeout = null; }, 200);
 			});
 		}
 		else
 		{
 			this.clientConfig.mode = this.serverConfig.mode = "development";
-			if(this.watchTimeout)
+			if (this.watchTimeout)
 				clearTimeout(this.watchTimeout);
-			this.watchTimeout = setTimeout(async () => { await startWatching(); this.watchTimeout = null;  }, 200);
+			this.watchTimeout = setTimeout(async () => { await startWatching(); this.watchTimeout = null; }, 200);
 		}
 	}
 

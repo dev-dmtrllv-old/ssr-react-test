@@ -1,5 +1,6 @@
 import fs from "fs";
-import * as path from "path";
+import path from "path";
+import readline from "readline";
 
 export abstract class Command<T = undefined>
 {
@@ -7,15 +8,20 @@ export abstract class Command<T = undefined>
 
 	static {
 		const p = path.resolve(__dirname, "commands");
+
 		fs.readdirSync(p).forEach(file => 
 		{
 			if (file.endsWith(".js"))
 			{
 				const m = require(path.resolve(__dirname, "commands", file));
+				const name = file.substring(0, file.length - 3).toLowerCase();
 				if (m.default)
 				{
-					const name = file.substring(0, file.length - 3).toLowerCase();
 					this.commands[name] = new m.default(name);
+				}
+				else
+				{
+					console.warn(`No default export found for Command ${name} (file: ${path.resolve(p, file)})`);
 				}
 			}
 		});
@@ -26,6 +32,7 @@ export abstract class Command<T = undefined>
 		const cmd = this.commands[command];
 		if (cmd)
 			cmd.run(args);
+
 	}
 
 	public readonly name: string;
@@ -35,9 +42,29 @@ export abstract class Command<T = undefined>
 		this.name = name;
 	}
 
+	protected readonly ask = (what: string, defaultVal?: string, validResults?: string[], retry: boolean = false): Promise<string> => new Promise<string>((res) =>
+	{
+		const c = readline.createInterface(process.stdin, process.stdout);
+
+		c.question(what + (defaultVal ? ` (${defaultVal}): ` : ": "), async (data) => 
+		{
+			c.close();
+
+			if (!data && defaultVal)
+				data = defaultVal;
+
+			if (!data && retry)
+				data = await this.ask(what, defaultVal, validResults, retry);
+			else if (validResults && validResults.length > 0 && !validResults.includes(data))
+				data = await this.ask(what, defaultVal, validResults, retry);
+
+			res(data);
+		});
+	});
+
 	public abstract get argPattern(): ArgPattern<T>;
 
-	protected abstract onRun(...args: T extends undefined ? [] : [T]): any;
+	protected abstract onRun(args: T): any;
 
 	public async run(args: string[])
 	{
@@ -123,7 +150,7 @@ export abstract class Command<T = undefined>
 					{
 						if (isArray)
 						{
-							if(!Array.isArray(v))
+							if (!Array.isArray(v))
 							{
 
 								if (v !== undefined)
@@ -165,7 +192,7 @@ export abstract class Command<T = undefined>
 			}
 		}
 
-		await this.onRun(...[argObj] as any);
+		await this.onRun(typeof argObj === "undefined" ? {} : argObj);
 	}
 }
 
