@@ -4,6 +4,6 @@ node_modules
 index.d.ts
 ion.js
 ion.js.map
-utils
+/utils
 *.d.ts
 ion-1.0.0.tgz
