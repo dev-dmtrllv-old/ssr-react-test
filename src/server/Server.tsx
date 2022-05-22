@@ -1,8 +1,9 @@
 import { networkInterfaces } from "os";
 import { AppConfig, ConfigAppInfo } from "./Config";
 import express, { Application } from "express";
-import { Renderer, RendererType } from "./Renderer";
+
 import path from "path";
+import { Renderer } from "./Renderer";
 
 export class Server
 {
@@ -54,8 +55,6 @@ export class Server
 	public readonly port: number;
 	public readonly appConfig: AppConfig;
 
-	private readonly renderers: { [key: string]: RendererType<any>; } = {};
-
 	protected constructor()
 	{
 		this.appConfig = new AppConfig();
@@ -81,8 +80,6 @@ export class Server
 				url = url.endsWith("*") ? url : `${url}*`;
 				this.express.get(url, this.onAppRoute(name, apps[name]));
 			}
-
-			this.setRenderer(name, Renderer);
 		}
 
 		if(globalApp)
@@ -93,17 +90,11 @@ export class Server
 	{
 		const appComponents = this.appConfig.loadAppComponents();
 
-		return (req: express.Request, res: express.Response) =>
+		return async (req: express.Request, res: express.Response) =>
 		{
-			const Component = appComponents[appName] as any;
-			const renderer = new this.renderers[appName](Component, req, res);
-			res.send(renderer.render(req, res));
+			const renderer = new Renderer(appComponents[appName], req, res);
+			res.send(await renderer.render());
 		};
-	}
-
-	public setRenderer<T extends Renderer>(appName: string, rendererClass: RendererType<T>)
-	{
-		this.renderers[appName] = rendererClass;
 	}
 
 	public start(callback: () => any = () => {})

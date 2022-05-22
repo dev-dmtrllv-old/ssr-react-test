@@ -1,8 +1,13 @@
 const { run } = require("./run");
 const { compile } = require("./compile");
 const { rmLib } = require("./clear");
+const { pack } = require("./pack");
 
 rmLib();
+
+let onResolve = () => {};
+
+module.exports = (cb) => onResolve = cb;
 
 Promise.all([
 	compile("ion", "src/index.ts", ".", "tsconfig.json", false, true, false),
@@ -12,4 +17,9 @@ Promise.all([
 ]).then(() => 
 {
 	console.log(`done!`);
+
+	if (!global.buildAll)
+		pack();
+	else
+		onResolve();
 });

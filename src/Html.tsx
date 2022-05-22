@@ -1,4 +1,5 @@
 import React from "react";
+import { SSRData } from "./SSRData";
 
 const HtmlBase: React.FC<HtmlBaseProps> = ({ title, favicon = "data:;base64,iVBORw0KGgo=", scripts = [], styles = [], children, manifest }) =>
 {
@@ -22,12 +23,12 @@ const HtmlBase: React.FC<HtmlBaseProps> = ({ title, favicon = "data:;base64,iVBO
 	);
 }
 
-export const Html: React.FC<HtmlProps> = ({ appString, /*ssrData,*/ ...props }) =>
+export const Html: React.FC<HtmlProps> = ({ appString, ssrData, ...props }) =>
 {
 	return (
 		<HtmlBase {...props}>
 			<div id="root" dangerouslySetInnerHTML={{ __html: appString }}></div>
-			{/* <script id="__SSR_DATA__" dangerouslySetInnerHTML={{ __html: `document.getElementById("__SSR_DATA__").remove(); window.__SSR_DATA__ = ${JSON.stringify(ssrData)};` }}/> */}
+			<script id="__SSR_DATA__" dangerouslySetInnerHTML={{ __html: `document.getElementById("__SSR_DATA__").remove(); window.__SSR_DATA__ = ${JSON.stringify(ssrData)};` }}/>
 		</HtmlBase>
 	);
 }
@@ -54,7 +55,7 @@ type HtmlBaseProps = {
 
 export type HtmlProps = {
 	appString: string;
-	// ssrData: SSRData;
+	ssrData: SSRData;
 } & Omit<HtmlBaseProps, "children">;
 
 export type HtmlErrorProps<P> = P & {

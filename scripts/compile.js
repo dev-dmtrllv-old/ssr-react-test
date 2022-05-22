@@ -10,7 +10,6 @@ const createConfig = (name, entry, outDir, tsConfigPath = "tsconfig.json", dev =
 	const output = {
 		filename: lib ? `${name}.js` : `${name}.bundle.js`,
 		path: resolve(outDir),
-		publicPath: "/",
 		clean: false,
 		library: {
 			name,
@@ -65,6 +64,7 @@ const createConfig = (name, entry, outDir, tsConfigPath = "tsconfig.json", dev =
 			rules: [
 				{
 					test: /\.(ts|js)x?$/,
+					exclude: /node_modules/,
 					use: {
 						loader: "ts-loader",
 						options: {
@@ -75,6 +75,7 @@ const createConfig = (name, entry, outDir, tsConfigPath = "tsconfig.json", dev =
 				},
 				{
 					test: /\.js$/,
+					exclude: /node_modules/,
 					use: ["source-map-loader"],
 					enforce: "pre"
 				}
@@ -92,32 +93,7 @@ const createConfig = (name, entry, outDir, tsConfigPath = "tsconfig.json", dev =
 				}
 			})
 		],
-		externals: isServer ? [nodeExternals()] : {
-			"react": {
-				commonjs: "react",
-				commonjs2: "react",
-				amd: "React",
-				root: "React"
-			},
-			"react-dom": {
-				commonjs: "react-dom",
-				commonjs2: "react-dom",
-				amd: "ReactDOM",
-				root: "ReactDOM"
-			},
-			"react-dom/client": {
-				commonjs: "react-dom/client",
-				commonjs2: "react-dom/client",
-				amd: "ReactDOM/client",
-				root: "ReactDOMClient"
-			},
-			"react-dom/server": {
-				commonjs: "react-dom/server",
-				commonjs2: "react-dom/server",
-				amd: "ReactDOM/server",
-				root: "ReactDOMServer"
-			}
-		},
+		externals: [nodeExternals()],
 	};
 
 	return config;

@@ -1,145 +1,118 @@
 import React from "react";
+import { IonAppContext } from "./IonAppContext";
 import { cloneError } from "./utils/object";
 import { hash } from "./utils/string";
 
 export namespace Async
 {
+	const componentMap: AsyncComponent<any, any>[] = [];
+
 	const Context = React.createContext<ContextType>({
 		data: {},
-		resolvingComponents: {},
+		resolvers: {},
+		resolvedDataStack: []
 	});
 
-	export const Provider = ({ ctx, children }: React.PropsWithChildren<{ ctx: ContextType }>) =>
+	export const Provider = ({ context, children }: React.PropsWithChildren<{ context: ContextType }>) =>
 	{
 		return (
-			<Context.Provider value={ctx}>
+			<Context.Provider value={context}>
 				{children}
 			</Context.Provider>
 		);
 	}
 
-	export const useContext = () => React.useContext(Context);
+	const createId = <P extends {}>(id: number, props: P) => hash(`${id}.${JSON.stringify(props)}`);
 
-	const resolveComponent = async <Props extends {}, Data>(component: AsyncComponent<Props, Data>, props: Props) =>  
+	const resolve = <P extends {}, D>(resolver: Resolver<P, D>, props: P) => new Promise<AsyncData<D>>(async (res) => 
 	{
-		let data: Data | undefined = undefined;
+		let data: D | undefined = undefined;
 		let error: Error | undefined = undefined;
 
 		try
 		{
-			data = await component.resolver(props);
+			data = await resolver(props);
 		}
 		catch (e)
 		{
 			error = cloneError(e);
 		}
 
-		return {
-			data,
-			error,
+		res({
 			isInvalidated: false,
 			isLoading: false,
-		};
-	}
+			data,
+			error,
+		});
+	});
 
-	export const resolveComponents = async (ctx: ContextType): Promise<DataMap> =>
+	export const resolveComponents = async (context: ContextType) =>
 	{
-		const idMap: string[] = [];
+		let promises: Promise<any>[] = [];
 
-		const promises: Promise<any>[] = [];
-
-		for (const id in ctx.resolvingComponents)
+		Object.keys(context.resolvers).forEach(id => 
 		{
-			const { component, props } = ctx.resolvingComponents[id];
-			idMap.push(id);
-			promises.push(resolveComponent(component, props));
-		}
+			const [resolver, props] = context.resolvers[id];
+			promises.push(resolve(resolver, props));
+		});
 
-		let map: DataMap = {};
+		const data = await Promise.all(promises);
 
-		const responses = await Promise.all(promises);
+		const map: DataMap = {};
 
-		for(let i = 0, l = idMap.length; i < l; i++)
-			map[idMap[i]] = responses[i];
-		
+		Object.keys(context.resolvers).forEach((k, i) => map[k] = data[i]);
+
 		return map;
 	}
 
-	const createId = <Props extends {} = {}, Data = any>(resolver: Resolver<Props, Data>, component: React.FC<Props & ComponentData<Data>>): string =>
-	{
-		return `${hash(resolver.toString())}.${hash(component.toString())}`;
-	}
-
-	const createPropId = <Props extends {}, Data>(componentID: string, props: Props): string =>
-	{
-		return `${componentID}.${hash(JSON.stringify(props))}`;
-	}
-
-	const getData = <T extends any = any>(ctx: ContextType, id: string): AsyncData<T> | undefined =>
-	{
-		return ctx.data[id];
-	}
-
-	const addResolvingComponent = <P extends {}, Data>(ctx: ContextType, id: string, component: AsyncComponent<P, Data>, props: P) =>
-	{
-		ctx.resolvingComponents[id] = { component, props };
-	}
+	export const useContext = () => React.useContext(Context);
 
 	export const create = <Props extends {}, Data>(resolver: Resolver<Props, Data>, component: React.FC<Props & ComponentData<Data>>): AsyncComponent<Props, Data> =>
 	{
-		const componentID = createId(resolver, component);
-
-		const c = ((props) =>
+		const c = (({ cache, prefetch, ...props }: Props & ComponentData<Data> & { resolveIndex?: number } & AsyncProps) =>
 		{
+			prefetch = prefetch === undefined ? true : prefetch;
+
 			const ctx = useContext();
+			const { isResolving, isClient, isServer, isHydrating } = IonAppContext.use();
 
-			const idRef = React.useRef(createPropId(componentID, props));
+			const id = createId(c.id, props);
 
-			const [state, setState] = React.useState<ComponentData<Data>>(() => 
+			const [state, setState] = React.useState(() => 
 			{
-				let data = getData(ctx, idRef.current);
-
-				if (data)
+				if (isHydrating)
 				{
-					const { cache, ...rest } = data;
-					return rest;
+					const d = ctx.resolvedDataStack.shift();
+					if (d)
+					{
+						ctx.data[id] = d;
+						return d;
+					}
 				}
-
-				if (props.prefetch)
-					addResolvingComponent(ctx, idRef.current, c, props);
+				else if (ctx.data[id])
+					return ctx.data[id];
+				else if (isResolving && prefetch)
+					ctx.resolvers[id] = [resolver, props];
 
 				return {
-					isInvalidated: false,
 					isLoading: true,
+					isInvalidated: false,
 				};
 			});
 
-			React.useEffect(() => 
+			if (isServer && !isResolving)
 			{
-				const id = idRef.current;
-				const newID = createPropId(componentID, props);
-				if (id !== newID) // on props change
-				{
-					idRef.current = newID;
-				}
-				else // on mount
-				{
+				ctx.resolvedDataStack.push(state);
+			}
 
-				}
-				return () => // on unmount
-				{
-
-				}
-			}, [props]);
-
-			const { cache, prefetch, ...rest } = props as AsyncProps & Props;
-
-			return React.createElement(component, { ...rest as any, ...state });
+			return React.createElement(component, { ...props as any, ...state });
 		}) as unknown as AsyncComponent<Props, Data>;
 
-		c.id = componentID;
+		c.id = hash(resolver.toString());
 		c.component = component;
 		c.resolver = resolver;
+
+		componentMap.push(c);
 
 		return c;
 	}
@@ -149,7 +122,7 @@ export namespace Async
 
 	export interface AsyncComponent<Props extends {}, Data> extends React.FunctionComponent<Props & AsyncProps>
 	{
-		id: string;
+		id: number;
 		component: React.FC<Props & ComponentData<Data>>;
 		resolver: Resolver<Props, Data>;
 	};
@@ -161,18 +134,16 @@ export namespace Async
 
 	export type ContextType = {
 		data: DataMap;
-		resolvingComponents: ResolvingComponentsMap;
+		resolvers: Resolvers;
+		resolvedDataStack: AsyncData<any>[];
 	};
 
 	type DataMap = {
-		[key: string]: AsyncData<any>;
+		[key: number]: AsyncData<any>;
 	};
 
-	type ResolvingComponentsMap = {
-		[key: string]: {
-			props: any;
-			component: AsyncComponent<any, any>;
-		};
+	type Resolvers = {
+		[key: string]: [Resolver<any, any>, any];
 	}
 
 	type ComponentData<T> = {
@@ -190,5 +161,4 @@ export namespace Async
 		duration: number;
 		invalidate?: boolean;
 	};
-
 }

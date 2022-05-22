@@ -15,15 +15,8 @@
 			"**/CVS": true,
 			"**/.DS_Store": true,
 			"**/Thumbs.db": true,
-			"cli-dist": true,
-			"node_modules": true,
-			"server": true,
-			"utils": true,
-			"*.d.ts": true,
-			"ion.js": true,
-			"ion.js.map": true,
-			"package-lock.json": true,
-			"dist": true
-		}
+			"node_modules": true
+		},
+		"liveServer.settings.multiRootWorkspaceName": "test-apps"
 	}
 }

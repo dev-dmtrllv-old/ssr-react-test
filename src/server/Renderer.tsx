@@ -1,22 +1,23 @@
 import { Request, Response } from "express";
+import { IonAppComponent } from "./types";
 
 export class Renderer
 {
-	private readonly component: () => string;
-	private readonly req: any;
-	private readonly res: Response<any, Record<string, any>>;
+	protected readonly component: IonAppComponent;
+	protected readonly req: any;
+	protected readonly res: Response<any, Record<string, any>>;
 
-	constructor(component: () => string, req: Request, res: Response)
+	constructor(component: IonAppComponent, req: Request, res: Response)
 	{
 		this.component = component;
 		this.req = req;
 		this.res = res;
 	}
 
-	public render()
+	public async render()
 	{
-		return this.component();
+		return await this.component.render();
 	}
 }
 
-export type RendererType<T extends Renderer> = new (component: () => string, req: Request, res: Response) => T;
+export type RendererType<T extends Renderer> = new (component: IonAppComponent, req: Request, res: Response) => T;

@@ -19,7 +19,7 @@ export default class Watch extends Command
 			this.serverProc.kill();
 
 		const cwd = path.resolve(App.get().projectPath, "dist");
-		const serverFile = path.resolve(App.get().projectPath, "dist", "main.js");
+		const serverFile = path.resolve(App.get().projectPath, "dist", "index.js");
 		this.serverProc = fork(serverFile, { cwd, stdio: "inherit" });
 	}
 

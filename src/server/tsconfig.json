@@ -17,7 +17,7 @@
 		"declaration": true,
 		"declarationDir": "../../server"
 	},
-	"include": ["./**/*"],
+	"include": ["./**/*","../../IonApp.d.ts"],
 	"exclude": [
 		"../../node_modules/**/*",
 		"../../types/server/**/*"

@@ -1,5 +1,6 @@
 import * as path from "path";
 import * as fs from "fs";
+import { IonAppComponent } from "./types";
 
 export class AppConfig
 {
@@ -14,26 +15,27 @@ export class AppConfig
 
 	public loadAppComponents()
 	{
-		// const g: any = global;
-
-		// if (!g.window)
-		// 	g.window = {};
-
-		// if (!g.self)
-		// 	g.self = {};
-
 		const distDir = process.cwd();
-		
+
 		const apps: AppComponents = {};
 
 		for (const name in this.data.apps)
 		{
 			try
 			{
-				const appModule = __non_webpack_require__(path.resolve(distDir, "public/js", `${name}.bundle.js`));
-				// console.log(appModule);
-				if (appModule.default)
-					apps[name] = appModule.default;
+				const appModule = __non_webpack_require__(path.resolve(distDir, `${name}.js`));
+				if (!appModule[name])
+				{
+					console.warn(`App ${name} has no exports!`);
+				}
+				else if (!appModule[name].default)
+				{
+					console.warn(`App ${name} has no default export!`);
+				}
+				else
+				{
+					apps[name] = appModule[name].default
+				}
 			}
 			catch (e: any)
 			{
@@ -64,25 +66,4 @@ export type ConfigAppInfo = {
 
 export type AppComponents = {
 	[key: string]: IonAppComponent;
-};
-
-export type IonAppComponent = {
-	render: () => void;
-	resolve: () => void;
-	renderToString: () => string;
-};
-
-
-type DllManifest = {
-	name: string;
-	content: {
-		[key: string]: {
-			id: number;
-			buildMeta: {
-				exportsType: string;
-				defaultObject: string;
-			};
-			exports: string[];
-		};
-	};
 };

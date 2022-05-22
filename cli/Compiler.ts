@@ -6,44 +6,111 @@ import path from "path";
 
 export class Compiler
 {
-	private static createVendorsConfig(config: CompilerConfig): webpack.Configuration
+	private static createConfig(basePath: string, config: CompilerConfig, isServer: boolean): webpack.Configuration
 	{
-		return {
-			mode: config.dev ? "development" : "production",
-			entry: path.resolve(__dirname, "../wrapper.js"),
-			output: {
-				filename: "vendors.bundle.js",
-				path: path.resolve(config.outPath, "public", "js")
+		const tsLoaders: any[] = [
+			{
+				loader: "ts-loader",
+				options: {
+					transpileOnly: true,
+					experimentalWatchApi: true,
+				}
 			}
-		};
-	}
+		];
 
-	private static createConfig(config: CompilerConfig, isServer: boolean): webpack.Configuration
-	{
-		const appEntries = isServer ? Object.keys(config.entries) : [];
+		if (isServer)
+			tsLoaders.push(path.resolve(__dirname, "../dynamicImportPathLoader.js"));
 
-		const libOptions = isServer ? {} : {
-			library: {
-				type: "umd",
-				name: "App"
+		const c: webpack.Configuration = {
+			mode: config.dev ? "development" : "production",
+			name: config.name,
+			devtool: config.dev ? "source-map" : false,
+			output: {
+				clean: false,
+				filename: isServer ? `[name].js` : `js/[name].bundle.js`,
+				chunkFilename: isServer ? `[id].js` : `js/[name].[id].chunk.js`,
+				path: isServer ? config.outPath : `${config.outPath}/public`,
+				publicPath: "/",
 			},
-			libraryTarget: "umd",
-			globalObject: "this",
+			resolve: {
+				modules: ["node_modules"],
+				extensions: [".tsx", ".ts", ".js", ".jsx", ".json"],
+				fallback: {
+					"fs": false,
+					"tls": false,
+					"net": false,
+					"http": false,
+					"https": false,
+					"stream": false,
+					"crypto": false,
+				}
+			},
+			plugins: [],
+			module: {
+				rules: [
+					{
+						test: /\.(ts|js)x?$/,
+						exclude: /node_modules/,
+						use: tsLoaders,
+					},
+					{
+						test: /\.js$/,
+						exclude: /node_modules/,
+						use: ["source-map-loader"],
+						enforce: "pre"
+					}
+				],
+			},
+			experiments: {
+				topLevelAwait: true
+			},
+			externals: isServer ? [
+				nodeExternals()
+			] : {}
 		};
-
-		const options: any = isServer ? { target: "node", externalsPresets: { node: true } } : {};
 
 		if (isServer)
 		{
-			options.entry = config.serverEntry || path.resolve(__dirname, "../server-entry.ts");
+			c.plugins = [
+				new DefinePlugin({
+					env: JSON.stringify({
+						isDev: config.dev,
+						appEntries: Object.keys(config.entries)
+					})
+				}),
+				new ForkTsCheckerWebpackPlugin({
+					typescript: {
+						mode: "write-references"
+					}
+				}),
+				new webpack.optimize.LimitChunkCountPlugin({ maxChunks: 1 })
+			];
+			c.target = "node";
+			c.externalsPresets = { node: true };
+			c.entry = {
+				"index": path.resolve(__dirname, "../server-entry.ts"),
+				...config.entries
+			};
+			c.output!.library = "App";
+			c.output!.libraryTarget = "commonjs";
 		}
 		else
 		{
-			options.entry = config.entries;
-		}
-
-		const opt = !isServer ? {
-			optimization: {
+			c.plugins = [
+				new DefinePlugin({
+					env: JSON.stringify({
+						isDev: config.dev
+					})
+				}),
+				new ForkTsCheckerWebpackPlugin({
+					typescript: {
+						mode: "write-references"
+					}
+				}),
+			]
+			c.entry = config.entries;
+			c.optimization = {
+				runtimeChunk: "single",
 				splitChunks: {
 					chunks: "all",
 					cacheGroups: {
@@ -55,118 +122,16 @@ export class Compiler
 						}
 					}
 				}
-			}
-		} : {};
+			};
+		}
 
-		const plugins = isServer ? [] : [new webpack.optimize.LimitChunkCountPlugin({ maxChunks: 1 })];
-
-		const tsLoaders: any[] = [{
-			loader: "ts-loader",
-			options: {
-				transpileOnly: true,
-				experimentalWatchApi: true,
-			}
-		}];
-
-		if(!isServer)
-			tsLoaders.push(path.resolve(__dirname, "../dynamicImportPathLoader.js"));
-
-		return {
-			...options,
-			mode: config.dev ? "development" : "production",
-			name: config.name,
-			devtool: config.dev ? "source-map" : false,
-			output: {
-				clean: false,
-				filename: isServer ? `[name].js` : `js/[name].bundle.js`,
-				chunkFilename: isServer ? `[id].js` : `js/[name].[id].chunk.js`,
-				path: isServer ? config.outPath : `${config.outPath}/public`,
-				...libOptions,
-				publicPath: "/"
-			},
-			resolve: {
-				extensions: [".tsx", ".ts", ".js", ".jsx", ".json"],
-				alias: config.aliases,
-				fallback: {
-					"fs": false,
-					"tls": false,
-					"net": false,
-					"http": false,
-					"https": false,
-					"stream": false,
-					"crypto": false,
-				},
-				symlinks: true,
-			},
-			module: {
-				rules: [
-					{
-						test: /\.(ts|js)x?$/,
-						exclude: /node_modules/,
-						use: tsLoaders,
-					},
-					{
-						test: /\.js$/,
-						use: ["source-map-loader"],
-						enforce: "pre"
-					}
-				],
-			},
-			plugins: [
-				new DefinePlugin({
-					env: JSON.stringify({
-						isDev: config.dev,
-						appEntries
-					})
-				}),
-				new ForkTsCheckerWebpackPlugin({
-					typescript: {
-						mode: "write-references"
-					}
-				}),
-				...plugins
-			],
-			experiments: {
-				topLevelAwait: true
-			},
-			externals: isServer ? [
-				nodeExternals()
-			] : {
-				"react": {
-					commonjs: "react",
-					commonjs2: "react",
-					amd: "React",
-					root: "React"
-				},
-				"react-dom": {
-					commonjs: "react-dom",
-					commonjs2: "react-dom",
-					amd: "ReactDOM",
-					root: "ReactDOM"
-				},
-				"react-dom/client": {
-					commonjs: "react-dom/client",
-					commonjs2: "react-dom/client",
-					amd: "ReactDOM/client",
-					root: "ReactDOMClient"
-				},
-				"react-dom/server": {
-					commonjs: "react-dom/server",
-					commonjs2: "react-dom/server",
-					amd: "ReactDOM/server",
-					root: "ReactDOMServer"
-				}
-			},
-			...opt
-		};
+		return c;
 	}
 
-	private readonly vendorsConfig: webpack.Configuration = {};
 	private readonly clientConfig: webpack.Configuration = {};
 	private readonly serverConfig: webpack.Configuration = {};
 
-	private clientConfigDllIndex = -1;
-	private serverConfigDllIndex = -1;
+	private watchTimeout: null | NodeJS.Timeout = null;
 
 	public readonly isDev: boolean;
 	public readonly outPath: string;
@@ -175,13 +140,12 @@ export class Compiler
 
 	public get isWatching() { return this._watcher !== null; }
 
-	public constructor(config: CompilerConfig)
+	public constructor(basePath: string, config: CompilerConfig)
 	{
 		this.outPath = config.outPath;
 		this.isDev = config.dev || false;
-		this.vendorsConfig = Compiler.createVendorsConfig(config);
-		this.clientConfig = Compiler.createConfig(config, false);
-		this.serverConfig = Compiler.createConfig(config, true);
+		this.clientConfig = Compiler.createConfig(basePath, config, false);
+		this.serverConfig = Compiler.createConfig(basePath, config, true);
 	}
 
 	public updateName(name: string)
@@ -213,94 +177,29 @@ export class Compiler
 			delete this.serverConfig.entry;
 	}
 
-	// private updateDllManifest()
-	// {
-	// 	const p = path.resolve(this.outPath, VENDORS_MANIFEST_PATH);
-
-	// 	if (fs.existsSync(p))
-	// 	{
-	// 		const manifest = require(p);
-	// 		if (!this.serverConfig.plugins)
-	// 			this.serverConfig.plugins = [];
-
-	// 		if (!this.clientConfig.plugins)
-	// 			this.clientConfig.plugins = [];
-
-	// 		const options = {
-	// 			manifest,
-	// 			context: path.resolve(this.outPath, "..")
-	// 		};
-
-	// 		if (this.serverConfigDllIndex > -1)
-	// 			this.serverConfig.plugins[this.serverConfigDllIndex] = new DllReferencePlugin(options);
-	// 		else
-	// 		{
-	// 			this.serverConfig.plugins.unshift(new DllReferencePlugin(options));
-	// 			this.serverConfigDllIndex = 0;
-	// 		}
-
-	// 		if (this.clientConfigDllIndex > -1)
-	// 		{
-	// 			this.clientConfig.plugins[this.clientConfigDllIndex] = new DllReferencePlugin(options);
-	// 		}
-	// 		else
-	// 		{
-	// 			this.clientConfig.plugins.unshift(new DllReferencePlugin(options))
-	// 			this.clientConfigDllIndex = 0;
-	// 		}
-	// 	}
-	// }
-
-	private hasBuild = false;
-	private watchTimeout: NodeJS.Timeout | null = null;
-
 	public watch(onCompile: () => any = () => { })
 	{
-		const buildVendors = () => new Promise<void>((res, rej) => 
-		{
-			webpack(this.vendorsConfig, (err, stats) => 
-			{
-				if (err)
-				{
-					console.log(err);
-					rej(err);
-				}
-				else
-				{
-					console.log(stats?.toString("minimal"));
-					// this.updateDllManifest();
-					res();
-				}
-			});
-		});
-
 		const startWatching = async () =>
 		{
-			if (!this.hasBuild)
+			if (this.watchTimeout)
+				clearTimeout(this.watchTimeout);
+
+			this.watchTimeout = setTimeout(() =>
 			{
-				console.log("building vendors...");
-				await buildVendors();
-				this.hasBuild = true;
-			}
-
-			const configs: webpack.Configuration[] = [this.clientConfig];
-
-			if (this.serverConfig.entry)
-				configs.push(this.serverConfig);
-
-			this._watcher = webpack(configs).watch({ followSymlinks: true, ignored: ["package.json", "ion.config.json", "tsconfig.json", "dist"] }, (err, stats) => 
-			{
-				if (err)
+				this._watcher = webpack([this.clientConfig, this.serverConfig]).watch({ followSymlinks: true, ignored: ["package.json", "ion.config.json", "tsconfig.json", "dist"] }, (err, stats) => 
 				{
-					console.log(err);
-				}
-				else
-				{
-					console.log(stats?.toString("minimal"));
-				}
+					if (err)
+					{
+						console.log(err);
+					}
+					else
+					{
+						console.log(stats?.toString("minimal"));
+					}
 
-				onCompile();
-			});
+					onCompile();
+				});
+			}, 150);
 		}
 
 		if (this._watcher)
@@ -308,17 +207,13 @@ export class Compiler
 			console.log(`Restarting compiler...`);
 			this._watcher.close(() => 
 			{
-				if (this.watchTimeout)
-					clearTimeout(this.watchTimeout);
-				this.watchTimeout = setTimeout(async () => { await startWatching(); this.watchTimeout = null; }, 200);
+				startWatching();
 			});
 		}
 		else
 		{
 			this.clientConfig.mode = this.serverConfig.mode = "development";
-			if (this.watchTimeout)
-				clearTimeout(this.watchTimeout);
-			this.watchTimeout = setTimeout(async () => { await startWatching(); this.watchTimeout = null; }, 200);
+			startWatching();
 		}
 	}
 

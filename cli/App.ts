@@ -29,7 +29,7 @@ export class App
 		this._pkg = this.getAppFile("package.json");
 		this._tsConfig = this.getAppFile("tsconfig.json");
 
-		this.compiler = new Compiler({
+		this.compiler = new Compiler(this.projectPath, {
 			aliases: this.getAliases(),
 			entries: this.config.parsedEntries,
 			outPath: this.resolvePath("dist"),
