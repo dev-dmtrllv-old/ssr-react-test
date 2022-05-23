@@ -23,6 +23,9 @@
 			"ion.*": true,
 			"package-lock.json": true,
 			".npmignore": true,
+			"ion-*.tgz": true,
+			"utils.js": true,
+			"utils.js.map": true
 		}
 	}
 }
