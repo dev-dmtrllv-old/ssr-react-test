@@ -22,6 +22,7 @@
 		"server",
 		"ion.js.map",
 		"server",
+		"utils",
 		"cli-dist",
 		"server-entry.ts",
 		"dynamicImportPathLoader.js",
@@ -87,13 +88,22 @@
 			"default": "./ion.js"
 		},
 		"./server": {
-			"import": "./server/index.js",
-			"node": "./server/index.js",
-			"require": "./server/index.js",
+			"import": "./server/main.js",
+			"node": "./server/main.js",
+			"require": "./server/main.js",
 			"types": {
-				"default": "./server/index.d.ts"
+				"default": "./server/main.d.ts"
 			},
-			"default": "./server/index.js"
+			"default": "./server/main.js"
+		},
+		"./utils": {
+			"import": "./utils.js",
+			"node": "./utils.js",
+			"require": "./utils.js",
+			"types": {
+				"default": "./utils/index.d.ts"
+			},
+			"default": "./utils.js"
 		}
 	}
 }

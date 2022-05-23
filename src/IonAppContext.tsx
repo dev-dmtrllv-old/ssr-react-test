@@ -3,23 +3,18 @@ import { Async } from "./Async";
 
 export namespace IonAppContext
 {
-	export function create(isServer: boolean, resolving?: false, hydrating?: true, asyncData?: Async.ContextType["resolvedDataStack"]): IonAppContext.Type;
-	export function create(isServer: boolean, resolving?: true, hydrating?: false, asyncData?: Async.ContextType["data"]): IonAppContext.Type;
-	export function create(isServer: boolean, resolving?: false, hydrating?: false): IonAppContext.Type;
-	export function create(isServer: boolean, resolving: boolean = false, hydrating: boolean = false, asyncData: Async.ContextType["data"] | Async.ContextType["resolvedDataStack"] | undefined = undefined): IonAppContext.Type
+	export function create(resolving: boolean = false, hydrating: boolean = false, asyncContext?: Async.ContextType): IonAppContext.Type
 	{
-		const data = hydrating ? {} : asyncData;
-		const resolvedDataStack = hydrating ? asyncData : [];
-
 		return {
 			isResolving: resolving,
-			isClient: !isServer,
 			isHydrating: hydrating,
-			isServer,
 			async: {
-				data: data || {},
+				data: asyncContext?.data || {},
 				resolvers: {},
-				resolvedDataStack: resolvedDataStack || [] as any
+				resolvedDataStack: asyncContext?.resolvedDataStack || [] as any,
+				popIndex: 0,
+				isMounted: false,
+				cache: {}
 			}
 		};
 	}
@@ -28,9 +23,9 @@ export namespace IonAppContext
 
 	export const Provider = ({ context, children }: React.PropsWithChildren<{ context: Type }>) =>
 	{
-		const { isResolving, async, isClient, isServer, isHydrating } = context;
+		const { isResolving, async, isHydrating } = context;
 		return (
-			<Context.Provider value={{ isResolving, isClient, isServer, isHydrating }}>
+			<Context.Provider value={{ isResolving, isHydrating }}>
 				<Async.Provider context={async}>
 					{children}
 				</Async.Provider>
@@ -42,8 +37,6 @@ export namespace IonAppContext
 
 	export type RenderType = {
 		isResolving: boolean;
-		isClient: boolean;
-		isServer: boolean;
 		isHydrating: boolean;
 	};
 

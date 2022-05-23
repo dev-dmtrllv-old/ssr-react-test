@@ -1,5 +1,7 @@
 import React from "react";
+import ReactDOM from "react-dom";
 import { IonAppContext } from "./IonAppContext";
+import { object } from "./utils";
 import { cloneError } from "./utils/object";
 import { hash } from "./utils/string";
 
@@ -10,11 +12,99 @@ export namespace Async
 	const Context = React.createContext<ContextType>({
 		data: {},
 		resolvers: {},
-		resolvedDataStack: []
+		resolvedDataStack: [],
+		popIndex: 0,
+		isMounted: false,
+		cache: {}
 	});
 
 	export const Provider = ({ context, children }: React.PropsWithChildren<{ context: ContextType }>) =>
 	{
+		React.useEffect(() => 
+		{
+			context.isMounted = true;
+
+			let promises: Promise<any>[] = [];
+
+			Object.keys(context.resolvers).forEach(id => 
+			{
+				const [resolver, props] = context.resolvers[id];
+				promises.push(resolve(resolver, props));
+			});
+
+			Promise.all(promises).then(data => 
+			{
+				ReactDOM.unstable_batchedUpdates(() => 
+				{
+					Object.keys(context.resolvers).forEach((k, i) => 
+					{
+						context.data[k] = data[i];
+						context.resolvers[k][2]?.forEach(setState => setState(data[i]));
+					});
+					context.resolvers = {};
+				});
+			});
+
+			Object.keys(context.cache).forEach(id => 
+			{
+				const createTimeout = () =>
+				{
+					const c = context.cache[id];
+					if (!Number.isFinite(c.options.duration))
+						return;
+
+					if (c.timeout)
+						clearTimeout(c.timeout);
+
+					c.timeout = setTimeout(() => 
+					{
+						const c = context.cache[id];
+
+						if (!c.options.invalidate)
+						{
+							resolve(c.resolver, c.props).then(data => 
+							{
+								context.data[id] = data;
+								
+								const c = context.cache[id];
+
+								ReactDOM.unstable_batchedUpdates(() => 
+								{
+									c.dispatchers.forEach((setState) => setState(data));
+								});
+
+								createTimeout();
+							});
+						}
+						else
+						{
+							ReactDOM.unstable_batchedUpdates(() => 
+							{
+								delete context.data[id];
+								c.dispatchers.forEach((setState) => 
+								{
+									setState({
+										isInvalidated: true,
+										isLoading: false,
+									});
+								});
+								context.cache[id] = {
+									...context.cache[id],
+									dispatchers: [],
+									timeout: null
+								};
+							});
+						}
+
+					}, c.options.duration);
+				}
+
+				createTimeout();
+			});
+
+			return () => { context.isMounted = false; };
+		}, []);
+
 		return (
 			<Context.Provider value={context}>
 				{children}
@@ -26,7 +116,7 @@ export namespace Async
 
 	const resolve = <P extends {}, D>(resolver: Resolver<P, D>, props: P) => new Promise<AsyncData<D>>(async (res) => 
 	{
-		let data: D | undefined = undefined;
+		let data: Awaited<D> | undefined = undefined;
 		let error: Error | undefined = undefined;
 
 		try
@@ -67,25 +157,90 @@ export namespace Async
 
 	export const useContext = () => React.useContext(Context);
 
-	export const create = <Props extends {}, Data>(resolver: Resolver<Props, Data>, component: React.FC<Props & ComponentData<Data>>): AsyncComponent<Props, Data> =>
+	export const getDynamicPaths = (context: ContextType) =>
 	{
+		const paths: string[] = [];
+		Object.keys(context.data).forEach(id => 
+		{
+			const { data } = context.data[id];
+			if (data.__IMPORT_PATH__)
+			{
+				paths.push(data.__IMPORT_PATH__);
+				context.data[id].data = { __IS_DYNAMIC_IMPORT__: true };
+			}
+		});
+		return paths;
+	}
+
+	const parseCache = (cache?: number | CacheOptions, defaultCacheOptions?: number | CacheOptions): Required<CacheOptions> =>
+	{
+		let duration = Infinity;
+		let invalidate = true;
+
+		if (typeof defaultCacheOptions === "object")
+		{
+			duration = defaultCacheOptions.duration
+			invalidate = defaultCacheOptions.invalidate === undefined ? true : defaultCacheOptions.invalidate;
+		}
+
+		if (typeof cache === "number")
+		{
+			duration = cache;
+		}
+		else if (typeof cache !== "undefined")
+		{
+			duration = cache.duration
+			invalidate = cache.invalidate === undefined ? true : cache.invalidate;
+		}
+
+		return { invalidate, duration };
+	}
+
+	export const create = <Props extends {}, Data>(resolver: Resolver<Props, Data>, component: React.FC<Props & ComponentData<Data>>, defaultAsyncProps: AsyncProps = {}): AsyncComponent<Props, Data> =>
+	{
+		defaultAsyncProps = { prefetch: true, cache: Infinity, ...defaultAsyncProps };
+
 		const c = (({ cache, prefetch, ...props }: Props & ComponentData<Data> & { resolveIndex?: number } & AsyncProps) =>
 		{
-			prefetch = prefetch === undefined ? true : prefetch;
+			prefetch = prefetch === undefined ? defaultAsyncProps.prefetch : prefetch;
 
 			const ctx = useContext();
-			const { isResolving, isClient, isServer, isHydrating } = IonAppContext.use();
+			const { isResolving, isHydrating } = IonAppContext.use();
 
 			const id = createId(c.id, props);
+
+			const propsRef = React.useRef(props);
+			const dispatcherIndex = React.useRef(-1);
 
 			const [state, setState] = React.useState(() => 
 			{
 				if (isHydrating)
 				{
-					const d = ctx.resolvedDataStack.shift();
+					const d = ctx.resolvedDataStack[ctx.popIndex];
+					ctx.popIndex++;
 					if (d)
 					{
+						if (d.data?.__IS_DYNAMIC_IMPORT__) // filter dynamic imports
+						{
+							if (ctx.data[id])
+							{
+								d.data = ctx.data[id];
+								return ctx.data[id];
+							}
+
+							ctx.resolvers[id] = [resolver, props];
+						}
+
 						ctx.data[id] = d;
+
+						ctx.cache[id] = {
+							dispatchers: [],
+							options: parseCache(cache, defaultAsyncProps.cache),
+							timeout: null,
+							resolver,
+							props
+						};
+
 						return d;
 					}
 				}
@@ -100,10 +255,79 @@ export namespace Async
 				};
 			});
 
-			if (isServer && !isResolving)
+			if (env.isServer && !isResolving)
 			{
 				ctx.resolvedDataStack.push(state);
 			}
+
+			React.useEffect(() => 
+			{
+				if (!object.equals(propsRef.current, props))
+				{
+					propsRef.current = props;
+				}
+				else // on mount
+				{
+					if (state.isLoading)
+					{
+						if (ctx.isMounted)
+							resolve(resolver, props as any).then(d => 
+							{
+								ctx.data[createId(c.id, props)] = d;
+								setState(d);
+							});
+						else
+						{
+							if (ctx.resolvers[id] && ctx.resolvers[id][2])
+								ctx.resolvers[id][2]!.push(setState);
+							else
+								ctx.resolvers[id] = [resolver, props, [setState]];
+						}
+					}
+				}
+
+				const options = parseCache(cache, defaultAsyncProps.cache);
+
+				if (Number.isFinite(options.duration))
+				{
+					if (!ctx.cache[id])
+					{
+						console.log(`cache did not exists for ${id}`);
+						ctx.cache[id] = {
+							dispatchers: [],
+							options,
+							timeout: null,
+							resolver,
+							props
+						};
+					}
+					if (dispatcherIndex.current === -1)
+					{
+						let found = false;
+						for (let i = 0; i < ctx.cache[id].dispatchers.length; i++)
+						{
+							if (!ctx.cache[id].dispatchers[i])
+							{
+								ctx.cache[id].dispatchers[i] = setState
+								dispatcherIndex.current = i;
+								found = true;
+								break;
+							}
+						}
+
+						if (!found)
+							dispatcherIndex.current = ctx.cache[id].dispatchers.push(setState) - 1;
+
+					}
+					else
+						ctx.cache[id].dispatchers[dispatcherIndex.current] = setState;
+				}
+
+				return () =>
+				{
+					delete ctx.cache[id].dispatchers[dispatcherIndex.current];
+				}
+			}, [props]);
 
 			return React.createElement(component, { ...props as any, ...state });
 		}) as unknown as AsyncComponent<Props, Data>;
@@ -117,10 +341,9 @@ export namespace Async
 		return c;
 	}
 
+	type Resolver<Props extends {}, Data> = (data: Omit<Props, keyof AsyncProps | "children"> & {}) => Data;
 
-	type Resolver<Props extends {}, Data> = (data: Props & {}) => Data;
-
-	export interface AsyncComponent<Props extends {}, Data> extends React.FunctionComponent<Props & AsyncProps>
+	export interface AsyncComponent<Props extends {}, Data> extends React.FC<Props & AsyncProps>
 	{
 		id: number;
 		component: React.FC<Props & ComponentData<Data>>;
@@ -136,18 +359,33 @@ export namespace Async
 		data: DataMap;
 		resolvers: Resolvers;
 		resolvedDataStack: AsyncData<any>[];
+		popIndex: number;
+		isMounted: boolean;
+		cache: CacheMap;
 	};
 
+	type CacheMap = {
+		[id: string]: {
+			resolver: Resolver<any, any>;
+			props: any;
+			options: CacheOptions;
+			timeout: NodeJS.Timeout | null;
+			dispatchers: StateDispatcher[];
+		};
+	}
+
 	type DataMap = {
-		[key: number]: AsyncData<any>;
+		[key: string]: AsyncData<any>;
 	};
 
 	type Resolvers = {
-		[key: string]: [Resolver<any, any>, any];
+		[key: string]: [Resolver<any, any>, any] | [Resolver<any, any>, any, StateDispatcher[]];
 	}
 
+	type StateDispatcher = (state: AsyncData<any>) => void;
+
 	type ComponentData<T> = {
-		data?: T | undefined;
+		data?: Awaited<T> | undefined;
 		error?: Error | undefined;
 		isLoading: boolean;
 		isInvalidated: boolean;

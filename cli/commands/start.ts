@@ -16,7 +16,7 @@ export default class Start extends Command
 	protected onRun()
 	{
 		const cwd = path.resolve(App.get().projectPath, "dist");
-		const serverFile = path.resolve(App.get().projectPath, "dist", "main.js");
+		const serverFile = path.resolve(App.get().projectPath, "dist", "index.js");
 		const [,,,...args] = process.argv;
 		const proc = fork(serverFile, { cwd, stdio: "inherit", env: { ...process.env, args: args.join(" ") }, });
 	}

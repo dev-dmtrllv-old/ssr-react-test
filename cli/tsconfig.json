@@ -13,6 +13,9 @@
 		"moduleResolution": "Node",
 		"outDir": "../cli-dist",
 		"rootDir": ".",
-		"declaration": false
+		"declaration": false,
+		"lib": [
+			"es2021"
+		]
 	}
 }

@@ -4,6 +4,7 @@ import express, { Application } from "express";
 
 import path from "path";
 import { Renderer } from "./Renderer";
+import { Manifest } from "./Manifest";
 
 export class Server
 {
@@ -55,6 +56,8 @@ export class Server
 	public readonly port: number;
 	public readonly appConfig: AppConfig;
 
+	public readonly manifest: Manifest = new Manifest();
+
 	protected constructor()
 	{
 		this.appConfig = new AppConfig();
@@ -93,7 +96,7 @@ export class Server
 		return async (req: express.Request, res: express.Response) =>
 		{
 			const renderer = new Renderer(appComponents[appName], req, res);
-			res.send(await renderer.render());
+			res.send(await renderer.render(appName, this.manifest));
 		};
 	}
 

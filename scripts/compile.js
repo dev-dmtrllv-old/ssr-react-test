@@ -5,10 +5,10 @@ var nodeExternals = require("webpack-node-externals");
 
 const resolve = (...p) => path.resolve(__dirname, "..", ...p);
 
-const createConfig = (name, entry, outDir, tsConfigPath = "tsconfig.json", dev = false, lib = false, isServer = false) =>
+const createConfig = (name, entry, outDir, dev = false, isServer = false) =>
 {
 	const output = {
-		filename: lib ? `${name}.js` : `${name}.bundle.js`,
+		filename: "[name].js",
 		path: resolve(outDir),
 		clean: false,
 		library: {
@@ -20,7 +20,7 @@ const createConfig = (name, entry, outDir, tsConfigPath = "tsconfig.json", dev =
 
 	const aliases = () =>
 	{
-		const tsConfig = require(resolve(tsConfigPath));
+		const tsConfig = require(resolve("tsconfig.json"));
 
 		const { baseUrl = ".", paths = {} } = tsConfig.compilerOptions;
 
@@ -44,7 +44,7 @@ const createConfig = (name, entry, outDir, tsConfigPath = "tsconfig.json", dev =
 		devtool: dev ? "source-map" : undefined,
 		mode: dev ? "development" : "production",
 		name,
-		entry: resolve(entry),
+		entry: entry,
 		output,
 		resolve: {
 			extensions: [".tsx", ".ts", ".js", ".jsx", ".json"],
@@ -88,9 +88,7 @@ const createConfig = (name, entry, outDir, tsConfigPath = "tsconfig.json", dev =
 				}
 			}),
 			new webpack.DefinePlugin({
-				env: {
-					isDev: dev
-				}
+				isDevBuild: dev
 			})
 		],
 		externals: [nodeExternals()],
@@ -99,9 +97,9 @@ const createConfig = (name, entry, outDir, tsConfigPath = "tsconfig.json", dev =
 	return config;
 }
 
-const watch = (name, entry, outDir, tsConfigPath = "tsconfig.json", dev = false, lib = false, isServer = false, watchCallback = () => { }) =>
+const watch = (name, entry, outDir, dev = false, isServer = false, watchCallback = () => { }) =>
 {
-	webpack(createConfig(name, entry, outDir, tsConfigPath, dev, lib, isServer)).watch({ followSymlinks: true }, (err, stats) => 
+	webpack(createConfig(name, entry, outDir, dev, isServer)).watch({ followSymlinks: true }, (err, stats) => 
 	{
 		if (err)
 		{
@@ -116,9 +114,9 @@ const watch = (name, entry, outDir, tsConfigPath = "tsconfig.json", dev = false,
 	});
 }
 
-const compile = (name, entry, outDir, tsConfigPath = "tsconfig.json", dev = false, lib = false, isServer = false) => new Promise((res, rej) => 
+const compile = (name, entry, outDir, dev = false, isServer = false) => new Promise((res, rej) => 
 {
-	webpack(createConfig(name, entry, outDir, tsConfigPath, dev, lib, isServer), (err, stats) => 
+	webpack(createConfig(name, entry, outDir, dev, isServer), (err, stats) => 
 	{
 		if (err)
 		{

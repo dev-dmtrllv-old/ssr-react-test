@@ -1,25 +1,30 @@
+const path = require("path");
 const { run } = require("./run");
 const { compile } = require("./compile");
 const { rmLib } = require("./clear");
 const { pack } = require("./pack");
 
-rmLib();
 
 let onResolve = () => {};
 
+const resolve = (...p) => path.resolve(__dirname, "..", ...p);
+
 module.exports = (cb) => onResolve = cb;
 
+rmLib();
+
 Promise.all([
-	compile("ion", "src/index.ts", ".", "tsconfig.json", false, true, false),
-	compile("index", "src/server/index.ts", "server", "src/server/tsconfig.json", false, true, true),
+	compile("ion", { "ion": resolve("src/index.ts"), "utils": resolve("src/utils/index.ts") }, ".", false, false),
+	compile("index", resolve("src/server/index.ts"), "server", false, true),
 	run("tsc --emitDeclarationOnly"),
-	run("tsc --emitDeclarationOnly -p ./src/server/tsconfig.json"),
+	
 ]).then(() => 
 {
 	console.log(`done!`);
-
+	
 	if (!global.buildAll)
-		pack();
+	pack();
 	else
-		onResolve();
+	onResolve();
 });
+

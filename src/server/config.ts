@@ -1,6 +1,6 @@
 import * as path from "path";
 import * as fs from "fs";
-import { IonAppComponent } from "./types";
+import type { IonApp } from "../IonApp";
 
 export class AppConfig
 {
@@ -24,17 +24,22 @@ export class AppConfig
 			try
 			{
 				const appModule = __non_webpack_require__(path.resolve(distDir, `${name}.js`));
-				if (!appModule[name])
+				
+				const appExportName = "App";
+
+				const m = appModule[appExportName];
+
+				if (!m)
 				{
 					console.warn(`App ${name} has no exports!`);
 				}
-				else if (!appModule[name].default)
+				else if (!m.default)
 				{
 					console.warn(`App ${name} has no default export!`);
 				}
 				else
 				{
-					apps[name] = appModule[name].default
+					apps[name] = appModule[appExportName].default;
 				}
 			}
 			catch (e: any)
@@ -65,5 +70,5 @@ export type ConfigAppInfo = {
 };
 
 export type AppComponents = {
-	[key: string]: IonAppComponent;
+	[key: string]: IonApp.Component<any>;
 };

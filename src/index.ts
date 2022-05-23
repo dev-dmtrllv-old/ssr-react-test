@@ -1,8 +1,25 @@
+if(module === undefined)
+{
+	window.env = {
+		isClient: true,
+		isServer: false
+	};
+}
+else
+{
+	(global as any).env = {
+		isClient: false,
+		isServer: true
+	};
+}
+
+
 import { IonApp } from "./IonApp";
 import { Async } from "./Async";
 
 export * from "./IonApp";
 export * from "./Async";
+export * as Utils from "./utils";
 
 namespace Ion
 {

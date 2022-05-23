@@ -31,13 +31,9 @@
 		"./src/**/*"
 	],
 	"exclude": [
-		"./src/server/**",
 		"./node_modules/**",
 		"./cli/**",
 		"./cli-dist/**",
-		"./scripts/**",
-		"./server/**",
-		"./utils/**",
-		"./*.d.ts"
+		"./scripts/**"
 	]
 }

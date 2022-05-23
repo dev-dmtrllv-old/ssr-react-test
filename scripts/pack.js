@@ -8,6 +8,7 @@ const ignore = [
 	"src",
 	"ion-1.0.0.tgz",
 	"node_modules",
+	".git"
 ];
 
 let timeout = null;

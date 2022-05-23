@@ -2,7 +2,10 @@ import webpack, { DefinePlugin } from "webpack";
 import ForkTsCheckerWebpackPlugin from "fork-ts-checker-webpack-plugin";
 import nodeExternals from "webpack-node-externals";
 
+import ManifestPlugin from "./ManifestPlugin";
+
 import path from "path";
+import { existsSync, mkdirSync, readdirSync, rmdirSync, rmSync, unlinkSync, writeFileSync } from "fs";
 
 export class Compiler
 {
@@ -19,7 +22,13 @@ export class Compiler
 		];
 
 		if (isServer)
-			tsLoaders.push(path.resolve(__dirname, "../dynamicImportPathLoader.js"));
+			tsLoaders.push({
+				loader: path.resolve(__dirname, "../dynamicImportPathLoader.js"),
+				options: {
+					root: basePath,
+					dev: config.dev
+				}
+			});
 
 		const c: webpack.Configuration = {
 			mode: config.dev ? "development" : "production",
@@ -28,7 +37,7 @@ export class Compiler
 			output: {
 				clean: false,
 				filename: isServer ? `[name].js` : `js/[name].bundle.js`,
-				chunkFilename: isServer ? `[id].js` : `js/[name].[id].chunk.js`,
+				chunkFilename: isServer ? `[id].[fullhash].js` : `js/[id].[fullhash].js`,
 				path: isServer ? config.outPath : `${config.outPath}/public`,
 				publicPath: "/",
 			},
@@ -75,7 +84,9 @@ export class Compiler
 				new DefinePlugin({
 					env: JSON.stringify({
 						isDev: config.dev,
-						appEntries: Object.keys(config.entries)
+						appEntries: Object.keys(config.entries),
+						isClient: false,
+						isServer: true
 					})
 				}),
 				new ForkTsCheckerWebpackPlugin({
@@ -83,7 +94,7 @@ export class Compiler
 						mode: "write-references"
 					}
 				}),
-				new webpack.optimize.LimitChunkCountPlugin({ maxChunks: 1 })
+				new webpack.optimize.LimitChunkCountPlugin({ maxChunks: 1 }),
 			];
 			c.target = "node";
 			c.externalsPresets = { node: true };
@@ -96,10 +107,13 @@ export class Compiler
 		}
 		else
 		{
+			c.output!.clean = true;
 			c.plugins = [
 				new DefinePlugin({
 					env: JSON.stringify({
-						isDev: config.dev
+						isDev: config.dev,
+						isClient: true,
+						isServer: false
 					})
 				}),
 				new ForkTsCheckerWebpackPlugin({
@@ -107,6 +121,9 @@ export class Compiler
 						mode: "write-references"
 					}
 				}),
+				new ManifestPlugin(path.resolve(config.outPath, ".."), (manifest) => {
+					writeFileSync(path.resolve(config.outPath, "manifest.json"), JSON.stringify(manifest), "utf-8");
+				})
 			]
 			c.entry = config.entries;
 			c.optimization = {
@@ -186,6 +203,8 @@ export class Compiler
 
 			this.watchTimeout = setTimeout(() =>
 			{
+				rmSync(this.outPath, { force: true, recursive: true });
+
 				this._watcher = webpack([this.clientConfig, this.serverConfig]).watch({ followSymlinks: true, ignored: ["package.json", "ion.config.json", "tsconfig.json", "dist"] }, (err, stats) => 
 				{
 					if (err)
@@ -198,6 +217,14 @@ export class Compiler
 					}
 
 					onCompile();
+				}).watchings[1].compiler.hooks.beforeRun.tapAsync("clean-plugin", (compilation, cb) => 
+				{
+					readdirSync(this.serverConfig.output!.path!).forEach((name) => 
+					{
+						if(name.endsWith(".js"))
+							unlinkSync(path.resolve(this.serverConfig.output!.path!, name));
+					});
+					cb();
 				});
 			}, 150);
 		}
@@ -213,6 +240,7 @@ export class Compiler
 		else
 		{
 			this.clientConfig.mode = this.serverConfig.mode = "development";
+			(this.serverConfig.module!.rules![0] as any)!.use[1].options.dev = true;
 			startWatching();
 		}
 	}

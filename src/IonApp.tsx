@@ -4,11 +4,10 @@ import ReactDOMServer from "react-dom/server";
 import { Async } from "./Async";
 import { Html, HtmlProps } from "./Html";
 import { IonAppContext } from "./IonAppContext";
+import type { Manifest } from "./server/Manifest";
 
 export namespace IonApp
 {
-	const isServer = typeof process === "object" && typeof process.versions === "object" && typeof process.versions.node !== "undefined";
-
 	export class Component<T extends React.FC<any>>
 	{
 		public readonly fc: T;
@@ -19,7 +18,7 @@ export namespace IonApp
 		{
 			this.fc = fc;
 			this.options = { ...defaultOptions, ...options };
-			this.context = IonAppContext.create(isServer, false);
+			this.context = IonAppContext.create(false);
 		}
 
 		public wrap(context: IonAppContext.Type = this.context)
@@ -31,9 +30,9 @@ export namespace IonApp
 			);
 		}
 
-		public async resolve(): Promise<string>
+		public async resolve(hydrate: boolean = false, ctx: Async.ContextType = this.context.async)
 		{
-			let context = IonAppContext.create(isServer, true, false, { ...this.context.async.data });
+			let context = IonAppContext.create(!hydrate, hydrate, ctx);
 
 			ReactDOMServer.renderToStaticMarkup(this.wrap(context));
 
@@ -42,38 +41,42 @@ export namespace IonApp
 			while (Object.keys(newData).length > 0)
 			{
 				this.context.async.data = { ...this.context.async.data, ...newData };
-				context = IonAppContext.create(isServer, true, false, { ...this.context.async.data });
+
+				console.log(context.async.cache);
+
+				if (hydrate)
+					this.context.async.cache = context.async.cache;
+
+				context = IonAppContext.create(!hydrate, hydrate, ctx);
 				ReactDOMServer.renderToStaticMarkup(this.wrap(context));
 				newData = await Async.resolveComponents(context.async);
 			}
 
-			return ReactDOMServer.renderToStaticMarkup(this.wrap());
+			if (hydrate)
+				this.context.async.cache = context.async.cache;
 		}
 
-		public async hydrate()
+		protected async renderToString(appName: string, manifest: Manifest)
 		{
-			let context = IonAppContext.create(isServer, false, true, (window as any).__SSR_DATA__.async);
+			await this.resolve();
 
-			ReactDOMServer.renderToStaticMarkup(this.wrap(context));
+			const paths = Async.getDynamicPaths(this.context.async);
 
-			this.context.async.data = { ...context.async.data };
-		}
-
-		public async render()
-		{
-			const appString = await this.resolve();
+			const appString = ReactDOMServer.renderToString(this.wrap());
 
 			return ReactDOMServer.renderToStaticMarkup(React.createElement(this.options.html, {
 				appString,
-				scripts: [
-					"js/runtime.bundle.js",
-					"js/vendors.bundle.js",
-					"js/App.bundle.js"
-				],
+				scripts: manifest.get(appName, paths, "js"),
+				styles: manifest.get(appName, paths, "css"),
 				ssrData: {
 					async: this.context.async.resolvedDataStack
 				}
 			}));
+		}
+
+		public async render(appName: string, manifest: Manifest)
+		{
+			return await new IonApp.Component(this.fc, this.options).renderToString(appName, manifest);
 		}
 
 		public async mount()
@@ -92,7 +95,9 @@ export namespace IonApp
 				return rootElement;
 			};
 
-			await this.hydrate();
+			this.context.async.resolvedDataStack = (window as any).__SSR_DATA__.async;
+
+			await this.resolve(true);
 
 			const rootElement = initRoot();
 			ReactDOM.hydrateRoot(rootElement, this.wrap());
@@ -107,7 +112,7 @@ export namespace IonApp
 	{
 		const c = new Component(fc, options);
 
-		if (!isServer)
+		if (!env.isServer)
 			c.mount();
 
 		return c;

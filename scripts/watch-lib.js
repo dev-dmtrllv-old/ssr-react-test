@@ -1,11 +1,12 @@
+const path = require("path");
 const { run } = require("./run");
 const { watch } = require("./compile");
-
 const { rmLib } = require("./clear");
+
+const resolve = (...p) => path.resolve(__dirname, "..", ...p);
 
 rmLib();
 
-watch("ion", "src/index.ts", ".", "tsconfig.json", true, true, false);
+watch("ion", { "ion": resolve("src/index.ts"), "utils": resolve("src/utils/index.ts") }, ".", true, false);
+watch("index", "./src/server/index.ts", "server", true, true);
 run("tsc --watch --emitDeclarationOnly");
-watch("index", "src/server/index.ts", "server", "tsconfig.json", true, true, true);
-run("tsc --watch --emitDeclarationOnly -p ./src/server/tsconfig.json");
