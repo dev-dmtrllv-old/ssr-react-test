@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
 import type { IonApp } from "../IonApp";
-import { cloneError, isClass } from "../utils/object";
+import { isClass } from "../utils/object";
 import { Manifest } from "./Manifest";
 import type { Server } from "./Server";
 import nodeFetch from "node-fetch";
@@ -24,32 +24,48 @@ export class Renderer
 	{
 		let url = isClass(_url, URL) ? _url.href : _url.toString();
 
-		if (url.startsWith("/"))
-			url = `http://${this.server.host + ":" + this.server.port}${url}`;
+		const u = `${this.server.host}:${this.server.port}`;
+
+		const tests = ["/", u, `http://${u}`, `https://${u}`];
+
+		const matchedInternal = tests.find(s => url.startsWith(s));
 
 		try
 		{
-			let data = await nodeFetch(url as any, options as any);
+			if (matchedInternal)
+			{
+				return await new Promise((res, rej) => 
+				{
+					(this.req as any).uest({
+						url,
+						method: options?.method,
+						body: options?.body ? JSON.parse(options.body as string) : undefined
+					}, (err, resp, data) => 
+					{
+						if (err)
+							rej(err);
+						else
+							res(data);
+					});
+				})
+			}
+
+			let data: any = await nodeFetch(url as any, options as any)
 			data = await data.text();
 
-			if (["{", "[", "\""].includes(data[0]))
+			try
 			{
-				try
-				{
-					return JSON.parse(data);
-				}
-				catch
-				{
-					return data;
-				}
+				return JSON.parse(data);
 			}
-			return data;
+			catch
+			{
+				return data;
+			}
 		}
 		catch (e)
 		{
 			throw e;
 		}
-		// }
 	}
 
 	public async render(appName: string, manifest: Manifest)
