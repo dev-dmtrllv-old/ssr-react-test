@@ -25,10 +25,12 @@ const HtmlBase: React.FC<HtmlBaseProps> = ({ title, favicon = "data:;base64,iVBO
 
 export const Html: React.FC<HtmlProps> = ({ appString, ssrData, ...props }) =>
 {
+	const ssrDataString = btoa(unescape(encodeURIComponent(JSON.stringify(ssrData))));
+	
 	return (
 		<HtmlBase {...props}>
 			<div id="root" dangerouslySetInnerHTML={{ __html: appString }}></div>
-			<script id="__SSR_DATA__" dangerouslySetInnerHTML={{ __html: `document.getElementById("__SSR_DATA__").remove(); window.__SSR_DATA__ = ${JSON.stringify(ssrData)};` }}/>
+			<script id="__SSR_DATA__" dangerouslySetInnerHTML={{ __html: `document.getElementById("__SSR_DATA__").remove(); window.__SSR_DATA__ = \"${ssrDataString}\";` }}/>
 		</HtmlBase>
 	);
 }

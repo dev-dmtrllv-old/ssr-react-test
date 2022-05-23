@@ -5,7 +5,7 @@ import nodeExternals from "webpack-node-externals";
 import ManifestPlugin from "./ManifestPlugin";
 
 import path from "path";
-import { existsSync, mkdirSync, readdirSync, rmdirSync, rmSync, unlinkSync, writeFileSync } from "fs";
+import { readdirSync, rmSync, unlinkSync, writeFileSync } from "fs";
 
 export class Compiler
 {
@@ -33,7 +33,7 @@ export class Compiler
 		const c: webpack.Configuration = {
 			mode: config.dev ? "development" : "production",
 			name: config.name,
-			devtool: config.dev ? "source-map" : false,
+			devtool: config.dev ? "inline-source-map" : false,
 			output: {
 				clean: false,
 				filename: isServer ? `[name].js` : `js/[name].bundle.js`,
@@ -99,7 +99,7 @@ export class Compiler
 			c.target = "node";
 			c.externalsPresets = { node: true };
 			c.entry = {
-				"index": path.resolve(__dirname, "../server-entry.ts"),
+				"index": config.serverEntry || path.resolve(__dirname, "../server-entry.ts"),
 				...config.entries
 			};
 			c.output!.library = "App";

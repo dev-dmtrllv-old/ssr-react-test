@@ -46,6 +46,7 @@ const createConfig = (name, entry, outDir, dev = false, isServer = false) =>
 		name,
 		entry: entry,
 		output,
+		devtool: dev ? "inline-source-map" : false,
 		resolve: {
 			extensions: [".tsx", ".ts", ".js", ".jsx", ".json"],
 			alias: aliases(),

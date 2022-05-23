@@ -1,7 +1,7 @@
 import { networkInterfaces } from "os";
 import { AppConfig, ConfigAppInfo } from "./Config";
 import express, { Application } from "express";
-
+import uest from "uest";
 import path from "path";
 import { Renderer } from "./Renderer";
 import { Manifest } from "./Manifest";
@@ -70,6 +70,25 @@ export class Server
 		
 		this.express.use(express.static(path.resolve(process.cwd(), "public")));
 		
+		this.express.use(uest());
+	}
+
+	protected onAppRoute(appName: string, appInfo: ConfigAppInfo)
+	{
+		const appComponents = this.appConfig.loadAppComponents();
+
+		return async (req: express.Request, res: express.Response) =>
+		{
+			const renderer = new Renderer(this, appComponents[appName], req, res);
+			if(!await renderer.render(appName, this.manifest))
+				res.send("error?");
+		};
+	}
+
+	public start(callback: () => any = () => {})
+	{
+		const { apps } = this.appConfig.data;
+
 		let globalApp: string = "";
 
 		for(const name in apps)
@@ -87,21 +106,7 @@ export class Server
 
 		if(globalApp)
 			this.express.get("*", this.onAppRoute(globalApp, apps[globalApp]));
-	}
 
-	protected onAppRoute(appName: string, appInfo: ConfigAppInfo)
-	{
-		const appComponents = this.appConfig.loadAppComponents();
-
-		return async (req: express.Request, res: express.Response) =>
-		{
-			const renderer = new Renderer(appComponents[appName], req, res);
-			res.send(await renderer.render(appName, this.manifest));
-		};
-	}
-
-	public start(callback: () => any = () => {})
-	{
 		this.express.listen(this.port, this.host, () =>
 		{
 			console.log(`server is listening on http://${this.host}:${this.port}`);

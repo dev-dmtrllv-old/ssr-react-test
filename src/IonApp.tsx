@@ -8,6 +8,20 @@ import type { Manifest } from "./server/Manifest";
 
 export namespace IonApp
 {
+	const clientFetcher: Fetcher = async (url, options) =>
+	{
+		const response = await fetch(url, options);
+		const data = await response.text();
+		try
+		{
+			return JSON.parse(data);
+		}
+		catch 
+		{
+			return data;
+		}
+	}
+
 	export class Component<T extends React.FC<any>>
 	{
 		public readonly fc: T;
@@ -18,7 +32,7 @@ export namespace IonApp
 		{
 			this.fc = fc;
 			this.options = { ...defaultOptions, ...options };
-			this.context = IonAppContext.create(false);
+			this.context = IonAppContext.create(env.isClient ? clientFetcher : async () => { }, false);
 		}
 
 		public wrap(context: IonAppContext.Type = this.context)
@@ -30,9 +44,9 @@ export namespace IonApp
 			);
 		}
 
-		public async resolve(hydrate: boolean = false, ctx: Async.ContextType = this.context.async)
+		public async resolve(fetcher: Fetcher, hydrate: boolean = false, ctx: Async.ContextType = this.context.async)
 		{
-			let context = IonAppContext.create(!hydrate, hydrate, ctx);
+			let context = IonAppContext.create(fetcher, !hydrate, hydrate, ctx);
 
 			ReactDOMServer.renderToStaticMarkup(this.wrap(context));
 
@@ -42,12 +56,10 @@ export namespace IonApp
 			{
 				this.context.async.data = { ...this.context.async.data, ...newData };
 
-				console.log(context.async.cache);
-
 				if (hydrate)
 					this.context.async.cache = context.async.cache;
 
-				context = IonAppContext.create(!hydrate, hydrate, ctx);
+				context = IonAppContext.create(fetcher, !hydrate, hydrate, ctx);
 				ReactDOMServer.renderToStaticMarkup(this.wrap(context));
 				newData = await Async.resolveComponents(context.async);
 			}
@@ -56,9 +68,9 @@ export namespace IonApp
 				this.context.async.cache = context.async.cache;
 		}
 
-		protected async renderToString(appName: string, manifest: Manifest)
+		protected async renderToString(appName: string, manifest: Manifest, fetcher: Fetcher)
 		{
-			await this.resolve();
+			await this.resolve(fetcher);
 
 			const paths = Async.getDynamicPaths(this.context.async);
 
@@ -74,9 +86,9 @@ export namespace IonApp
 			}));
 		}
 
-		public async render(appName: string, manifest: Manifest)
+		public async render(appName: string, manifest: Manifest, fetcher: Fetcher)
 		{
-			return await new IonApp.Component(this.fc, this.options).renderToString(appName, manifest);
+			return await new IonApp.Component(this.fc, this.options).renderToString(appName, manifest, fetcher);
 		}
 
 		public async mount()
@@ -95,9 +107,11 @@ export namespace IonApp
 				return rootElement;
 			};
 
-			this.context.async.resolvedDataStack = (window as any).__SSR_DATA__.async;
+			const ssrData = JSON.parse(decodeURIComponent(escape(atob((window as any).__SSR_DATA__))));
 
-			await this.resolve(true);
+			this.context.async.resolvedDataStack = ssrData.async;
+
+			await this.resolve(clientFetcher, true);
 
 			const rootElement = initRoot();
 			ReactDOM.hydrateRoot(rootElement, this.wrap());
@@ -121,4 +135,6 @@ export namespace IonApp
 	type Options = {
 		html?: React.FC<HtmlProps>;
 	};
+
+	export type Fetcher = (input: RequestInfo | URL, init?: RequestInit | undefined) => Promise<any>;
 }

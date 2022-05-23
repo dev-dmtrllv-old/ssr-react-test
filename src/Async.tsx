@@ -4,6 +4,7 @@ import { IonAppContext } from "./IonAppContext";
 import { object } from "./utils";
 import { cloneError } from "./utils/object";
 import { hash } from "./utils/string";
+import type { IonApp } from "./IonApp";
 
 export namespace Async
 {
@@ -15,7 +16,8 @@ export namespace Async
 		resolvedDataStack: [],
 		popIndex: 0,
 		isMounted: false,
-		cache: {}
+		cache: {},
+		fetcher: async () => { }
 	});
 
 	export const Provider = ({ context, children }: React.PropsWithChildren<{ context: ContextType }>) =>
@@ -29,7 +31,7 @@ export namespace Async
 			Object.keys(context.resolvers).forEach(id => 
 			{
 				const [resolver, props] = context.resolvers[id];
-				promises.push(resolve(resolver, props));
+				promises.push(resolve(resolver, props, context.fetcher));
 			});
 
 			Promise.all(promises).then(data => 
@@ -62,10 +64,10 @@ export namespace Async
 
 						if (!c.options.invalidate)
 						{
-							resolve(c.resolver, c.props).then(data => 
+							resolve(c.resolver, c.props, context.fetcher).then(data => 
 							{
 								context.data[id] = data;
-								
+
 								const c = context.cache[id];
 
 								ReactDOM.unstable_batchedUpdates(() => 
@@ -114,17 +116,18 @@ export namespace Async
 
 	const createId = <P extends {}>(id: number, props: P) => hash(`${id}.${JSON.stringify(props)}`);
 
-	const resolve = <P extends {}, D>(resolver: Resolver<P, D>, props: P) => new Promise<AsyncData<D>>(async (res) => 
+	const resolve = <P extends {}, D>(resolver: Resolver<P, D>, props: P, fetcher: IonApp.Fetcher) => new Promise<AsyncData<D>>(async (res) => 
 	{
 		let data: Awaited<D> | undefined = undefined;
 		let error: Error | undefined = undefined;
 
 		try
 		{
-			data = await resolver(props);
+			data = await resolver({ ...props, fetch: fetcher } as any);
 		}
 		catch (e)
 		{
+			console.log(e);
 			error = cloneError(e);
 		}
 
@@ -143,7 +146,7 @@ export namespace Async
 		Object.keys(context.resolvers).forEach(id => 
 		{
 			const [resolver, props] = context.resolvers[id];
-			promises.push(resolve(resolver, props));
+			promises.push(resolve(resolver, props, context.fetcher));
 		});
 
 		const data = await Promise.all(promises);
@@ -162,10 +165,10 @@ export namespace Async
 		const paths: string[] = [];
 		Object.keys(context.data).forEach(id => 
 		{
-			const { data } = context.data[id];
-			if (data.__IMPORT_PATH__)
+			const d = context.data[id];
+			if (d?.data?.__IMPORT_PATH__)
 			{
-				paths.push(data.__IMPORT_PATH__);
+				paths.push(d.data.__IMPORT_PATH__);
 				context.data[id].data = { __IS_DYNAMIC_IMPORT__: true };
 			}
 		});
@@ -271,7 +274,7 @@ export namespace Async
 					if (state.isLoading)
 					{
 						if (ctx.isMounted)
-							resolve(resolver, props as any).then(d => 
+							resolve(resolver, props as any, ctx.fetcher).then(d => 
 							{
 								ctx.data[createId(c.id, props)] = d;
 								setState(d);
@@ -325,7 +328,8 @@ export namespace Async
 
 				return () =>
 				{
-					delete ctx.cache[id].dispatchers[dispatcherIndex.current];
+					if (dispatcherIndex.current > -1)
+						delete ctx.cache[id]?.dispatchers[dispatcherIndex.current];
 				}
 			}, [props]);
 
@@ -341,7 +345,7 @@ export namespace Async
 		return c;
 	}
 
-	type Resolver<Props extends {}, Data> = (data: Omit<Props, keyof AsyncProps | "children"> & {}) => Data;
+	type Resolver<Props extends {}, Data> = (data: Omit<Props, keyof AsyncProps | "children"> & { fetch: IonApp.Fetcher }) => Data;
 
 	export interface AsyncComponent<Props extends {}, Data> extends React.FC<Props & AsyncProps>
 	{
@@ -362,6 +366,7 @@ export namespace Async
 		popIndex: number;
 		isMounted: boolean;
 		cache: CacheMap;
+		fetcher: IonApp.Fetcher;
 	};
 
 	type CacheMap = {

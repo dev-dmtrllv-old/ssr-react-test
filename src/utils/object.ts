@@ -1,5 +1,7 @@
 export const isEmpty = (obj: { [key: string]: any }) => (typeof obj === "object" && !Array.isArray(obj)) ? (Object.keys(obj).length === 0) : false;
 
+export const isClass = <T extends any>(t: any, type: new (...args: any[]) => T): t is T => (t as any).constructor === type;
+
 export const serialize = (obj: { [key: string]: any }) =>
 {
 	let parts: string[] = [];
