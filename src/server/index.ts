@@ -1,4 +1,4 @@
-if(module === undefined)
+if (module === undefined)
 {
 	window.env = {
 		isClient: true,
@@ -14,3 +14,16 @@ else
 }
 
 export * from "./Server";
+export * from "./Api";
+
+import { Server } from "./Server";
+
+export default Server;
+
+declare global
+{
+	interface SessionType
+	{
+
+	}
+}

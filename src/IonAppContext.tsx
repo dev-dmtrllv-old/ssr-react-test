@@ -16,7 +16,8 @@ export namespace IonAppContext
 				resolvedDataStack: asyncContext?.resolvedDataStack || [] as any,
 				popIndex: 0,
 				isMounted: false,
-				cache: {}
+				cache: {},
+				abortControllers: {}
 			}
 		};
 	}

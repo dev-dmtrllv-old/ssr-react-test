@@ -1,6 +1,7 @@
 import * as path from "path";
 import * as fs from "fs";
 import type { IonApp } from "../IonApp";
+import type { ApiImplementation } from "./Api";
 
 export class AppConfig
 {
@@ -13,7 +14,9 @@ export class AppConfig
 		this._data = JSON.parse(fs.readFileSync(path.resolve(process.cwd(), "ion.config.json"), "utf-8"));
 	}
 
-	public loadAppComponents()
+	public get serverApiPath() { return this._data.server?.apiPath || "/api"; }
+
+	public loadAppComponents(apiImplementation: ApiImplementation<any>)
 	{
 		const distDir = process.cwd();
 
@@ -40,6 +43,7 @@ export class AppConfig
 				else
 				{
 					apps[name] = appModule[appExportName].default;
+					apps[name].updateApiForServer(this.serverApiPath, apiImplementation);
 				}
 			}
 			catch (e: any)
@@ -60,6 +64,7 @@ export type ConfigData = {
 		entry: string;
 		host?: string;
 		port?: number;
+		apiPath?: string;
 	}
 };
 

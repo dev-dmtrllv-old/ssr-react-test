@@ -17,8 +17,12 @@ export namespace Async
 		popIndex: 0,
 		isMounted: false,
 		cache: {},
-		fetcher: async () => { }
+		fetcher: async () => { },
+		abortControllers: {}
 	});
+
+	/** @internal */
+	export let serverApiFetcher: IonApp.Fetcher = async () => {};
 
 	export const Provider = ({ context, children }: React.PropsWithChildren<{ context: ContextType }>) =>
 	{
@@ -31,7 +35,8 @@ export namespace Async
 			Object.keys(context.resolvers).forEach(id => 
 			{
 				const [resolver, props] = context.resolvers[id];
-				promises.push(resolve(resolver, props, context.fetcher));
+				const aborter = context.abortControllers[id];
+				promises.push(resolve(resolver, props, context.fetcher, aborter?.signal));
 			});
 
 			Promise.all(promises).then(data => 
@@ -40,8 +45,22 @@ export namespace Async
 				{
 					Object.keys(context.resolvers).forEach((k, i) => 
 					{
-						context.data[k] = data[i];
-						context.resolvers[k][2]?.forEach(setState => setState(data[i]));
+						const abortCtrl = context.abortControllers[k];
+						if (abortCtrl.signal?.aborted)
+						{
+							context.data[k] = {
+								canceled: (abortCtrl.signal as any).reason || true,
+								isInvalidated: false,
+								isLoading: false,
+							}
+							console.log(`Async resolver canceled for ${k}`);
+						}
+						else
+						{
+							context.data[k] = data[i];
+						}
+
+						context.resolvers[k][2]?.forEach(setState => setState(context.data[k]));
 					});
 					context.resolvers = {};
 				});
@@ -88,6 +107,7 @@ export namespace Async
 									setState({
 										isInvalidated: true,
 										isLoading: false,
+										canceled: false
 									});
 								});
 								context.cache[id] = {
@@ -116,27 +136,50 @@ export namespace Async
 
 	const createId = <P extends {}>(id: number, props: P) => hash(`${id}.${JSON.stringify(props)}`);
 
-	const resolve = <P extends {}, D>(resolver: Resolver<P, D>, props: P, fetcher: IonApp.Fetcher) => new Promise<AsyncData<D>>(async (res) => 
+	const resolve = <P extends {}, D>(resolver: Resolver<P, D>, props: P, fetcher: IonApp.Fetcher, signal?: AbortSignal) => new Promise<AsyncData<D>>(async (res) => 
 	{
 		let data: Awaited<D> | undefined = undefined;
 		let error: Error | undefined = undefined;
+		let aborted = false;
 
 		try
 		{
-			data = await resolver({ ...props, fetch: fetcher } as any);
+			serverApiFetcher = fetcher;
+			data = await resolver({ ...props, fetch: (url, options) => fetcher(url, { ...options, signal }) } as any);
 		}
 		catch (e)
 		{
-			console.log(e);
-			error = cloneError(e);
+			if (e.name === "AbortError")
+			{
+				aborted = true;
+			}
+			else
+			{
+				console.log(e);
+				error = cloneError(e);
+			}
 		}
 
-		res({
-			isInvalidated: false,
-			isLoading: false,
-			data,
-			error,
-		});
+		if (signal && signal.aborted)
+		{
+			res({
+				isInvalidated: false,
+				isLoading: false,
+				data,
+				error,
+				canceled: (signal as any).reason || true
+			});
+		}
+		else
+		{
+			res({
+				isInvalidated: false,
+				isLoading: false,
+				data,
+				error,
+				canceled: false
+			});
+		}
 	});
 
 	export const resolveComponents = async (context: ContextType) =>
@@ -199,7 +242,7 @@ export namespace Async
 		return { invalidate, duration };
 	}
 
-	export const create = <Props extends {}, Data>(resolver: Resolver<Props, Data>, component: React.FC<Props & ComponentData<Data>>, defaultAsyncProps: AsyncProps = {}): AsyncComponent<Props, Data> =>
+	export const create = <Props extends {}, Data>(resolver: Resolver<Props, Data>, component: React.FC<Props & ComponentData<Data> & AbortProps>, defaultAsyncProps: AsyncProps = {}): AsyncComponent<Props, Data> =>
 	{
 		defaultAsyncProps = { prefetch: true, cache: Infinity, ...defaultAsyncProps };
 
@@ -212,10 +255,12 @@ export namespace Async
 
 			const id = createId(c.id, props);
 
+			const abortController = React.useRef<AbortController | null>(null);
+
 			const propsRef = React.useRef(props);
 			const dispatcherIndex = React.useRef(-1);
 
-			const [state, setState] = React.useState(() => 
+			const [state, setState] = React.useState<AsyncData<Data>>(() => 
 			{
 				if (isHydrating)
 				{
@@ -255,6 +300,7 @@ export namespace Async
 				return {
 					isLoading: true,
 					isInvalidated: false,
+					canceled: false
 				};
 			});
 
@@ -274,17 +320,26 @@ export namespace Async
 					if (state.isLoading)
 					{
 						if (ctx.isMounted)
-							resolve(resolver, props as any, ctx.fetcher).then(d => 
+						{
+							abortController.current = new AbortController();
+
+							resolve(resolver, props as any, ctx.fetcher, abortController.current.signal).then(d => 
 							{
 								ctx.data[createId(c.id, props)] = d;
 								setState(d);
 							});
+						}
 						else
 						{
 							if (ctx.resolvers[id] && ctx.resolvers[id][2])
 								ctx.resolvers[id][2]!.push(setState);
 							else
 								ctx.resolvers[id] = [resolver, props, [setState]];
+
+							if (!ctx.abortControllers[id])
+								ctx.abortControllers[id] = new AbortController();
+
+							abortController.current = ctx.abortControllers[id];
 						}
 					}
 				}
@@ -295,7 +350,8 @@ export namespace Async
 				{
 					if (!ctx.cache[id])
 					{
-						console.log(`cache did not exists for ${id}`);
+						console.log(`Cache did not exists for ${id}!`);
+
 						ctx.cache[id] = {
 							dispatchers: [],
 							options,
@@ -333,7 +389,15 @@ export namespace Async
 				}
 			}, [props]);
 
-			return React.createElement(component, { ...props as any, ...state });
+			const abort = (reason?: string) =>
+			{
+				if (abortController.current)
+				{
+					abortController.current.abort(reason);
+				}
+			}
+
+			return React.createElement(component, { ...props as any, ...state, abort });
 		}) as unknown as AsyncComponent<Props, Data>;
 
 		c.id = hash(resolver.toString());
@@ -345,12 +409,14 @@ export namespace Async
 		return c;
 	}
 
-	type Resolver<Props extends {}, Data> = (data: Omit<Props, keyof AsyncProps | "children"> & { fetch: IonApp.Fetcher }) => Data;
+	export type Resolver<Props extends {}, Data> = (data: Omit<Props, keyof AsyncProps | "children"> & { fetch: IonApp.Fetcher }) => Data;
+
+	export type ResolverProps<Props extends {} = {}> = Omit<Props, keyof AsyncProps | "children"> & { fetch: IonApp.Fetcher };
 
 	export interface AsyncComponent<Props extends {}, Data> extends React.FC<Props & AsyncProps>
 	{
 		id: number;
-		component: React.FC<Props & ComponentData<Data>>;
+		component: React.FC<Props & ComponentData<Data> & AbortProps>;
 		resolver: Resolver<Props, Data>;
 	};
 
@@ -367,6 +433,9 @@ export namespace Async
 		isMounted: boolean;
 		cache: CacheMap;
 		fetcher: IonApp.Fetcher;
+		abortControllers: {
+			[id: string]: AbortController;
+		}
 	};
 
 	type CacheMap = {
@@ -394,6 +463,7 @@ export namespace Async
 		error?: Error | undefined;
 		isLoading: boolean;
 		isInvalidated: boolean;
+		canceled: boolean | string;
 	};
 
 	type AsyncData<T> = ComponentData<T> & {
@@ -404,4 +474,6 @@ export namespace Async
 		duration: number;
 		invalidate?: boolean;
 	};
+
+	type AbortProps = { abort: (reason?: string) => void };
 }

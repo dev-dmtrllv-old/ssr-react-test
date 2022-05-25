@@ -16,7 +16,7 @@
 			"**/.DS_Store": true,
 			"**/Thumbs.db": true,
 			"node_modules": true,
-			"*.d.ts": true,
+			//"*.d.ts": true,
 			"utils": true,
 			"server": true,
 			"cli-dist": true,

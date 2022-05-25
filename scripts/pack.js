@@ -8,7 +8,9 @@ const ignore = [
 	"src",
 	"ion-1.0.0.tgz",
 	"node_modules",
-	".git"
+	".git",
+	".gitignore",
+	"custom-dts"
 ];
 
 let timeout = null;
@@ -41,10 +43,7 @@ const watch = () =>
 				const [p] = name.split(path.sep);
 
 				if (!ignore.includes(p))
-				{
-					console.log("changed! " + name);
 					pack();
-				}
 			}
 		});
 	}

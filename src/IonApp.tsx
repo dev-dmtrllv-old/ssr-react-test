@@ -2,21 +2,29 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import ReactDOMServer from "react-dom/server";
 import { Async } from "./Async";
+import { Client } from "./Client";
 import { Html, HtmlProps } from "./Html";
 import { IonAppContext } from "./IonAppContext";
+import type { ApiImplementation, ApiManifest, ApiScheme } from "./server";
 import type { Manifest } from "./server/Manifest";
+import { getSSRData } from "./SSRData";
 
 export namespace IonApp
 {
-	const clientFetcher: Fetcher = async (url, options) =>
+	export const clientFetcher: Fetcher = async (url, options) =>
 	{
-		const response = await fetch(url, options);
+		const response = await fetch(url as RequestInfo, { ...options, credentials: "include" });
 		const data = await response.text();
 		try
 		{
-			return JSON.parse(data);
+			let r = JSON.parse(data);
+			if (r.data)
+				return r.data;
+			else if(r.error)
+				throw r.error;
+			return r;
 		}
-		catch 
+		catch
 		{
 			return data;
 		}
@@ -68,7 +76,7 @@ export namespace IonApp
 				this.context.async.cache = context.async.cache;
 		}
 
-		protected async renderToString(appName: string, manifest: Manifest, fetcher: Fetcher)
+		protected async renderToString(appName: string, manifest: Manifest, fetcher: Fetcher, apiManifest: ApiManifest)
 		{
 			await this.resolve(fetcher);
 
@@ -81,14 +89,15 @@ export namespace IonApp
 				scripts: manifest.get(appName, paths, "js"),
 				styles: manifest.get(appName, paths, "css"),
 				ssrData: {
-					async: this.context.async.resolvedDataStack
+					async: this.context.async.resolvedDataStack,
+					api: apiManifest
 				}
 			}));
 		}
 
-		public async render(appName: string, manifest: Manifest, fetcher: Fetcher)
+		public async render(appName: string, manifest: Manifest, fetcher: Fetcher, apiManifest: ApiManifest)
 		{
-			return await new IonApp.Component(this.fc, this.options).renderToString(appName, manifest, fetcher);
+			return await new IonApp.Component(this.fc, this.options).renderToString(appName, manifest, fetcher, apiManifest);
 		}
 
 		public async mount()
@@ -107,7 +116,9 @@ export namespace IonApp
 				return rootElement;
 			};
 
-			const ssrData = JSON.parse(decodeURIComponent(escape(atob((window as any).__SSR_DATA__))));
+			const ssrData = getSSRData();
+			
+			Client.updateApi(ssrData.api);
 
 			this.context.async.resolvedDataStack = ssrData.async;
 
@@ -116,6 +127,8 @@ export namespace IonApp
 			const rootElement = initRoot();
 			ReactDOM.hydrateRoot(rootElement, this.wrap());
 		}
+
+		public updateApiForServer = <T extends ApiScheme>(apiBasePath: string, apiImplementation: ApiImplementation<T>) => Client.updateApiForServer(apiBasePath, apiImplementation)
 	}
 
 	const defaultOptions: Required<Options> = {

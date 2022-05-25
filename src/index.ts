@@ -19,6 +19,8 @@ import { Async } from "./Async";
 
 export * from "./IonApp";
 export * from "./Async";
+export * from "./Client";
+export * from "./Html";
 export * as Utils from "./utils";
 
 namespace Ion
@@ -28,3 +30,8 @@ namespace Ion
 };
 
 export default Ion;
+
+declare global
+{
+    interface ApiType {}
+}
