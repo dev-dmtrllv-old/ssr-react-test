@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
 import type { IonApp } from "../IonApp";
-import { isClass } from "../utils/object";
+import { cloneError, isClass } from "../utils/object";
 import { Manifest } from "./Manifest";
 import type { Server } from "./Server";
 import nodeFetch from "node-fetch";
@@ -74,8 +74,29 @@ export class Renderer
 
 	public async render(appName: string, manifest: Manifest)
 	{
-		const html = await this.component.render(appName, manifest, this.fetcher, this.server.apiManifest);
-		this.res.send(html);
-		return true;
+		try
+		{
+			let redirectURL = this.req.url;
+
+			const onRedirect = (url: string) =>
+			{
+				redirectURL = url;
+				this.res.redirect(url);
+				return onRedirect(url);
+			}
+
+			const html = await this.component.render(this.req.url, onRedirect, appName, manifest, this.fetcher, this.server.apiManifest);
+
+			if (redirectURL !== this.req.url)
+				return false;
+
+			this.res.send(html);
+			return true;
+		}
+		catch (e)
+		{
+			this.res.json(cloneError(e));
+			return true;
+		}
 	}
 }

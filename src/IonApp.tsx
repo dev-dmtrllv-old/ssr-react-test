@@ -3,11 +3,14 @@ import ReactDOM from "react-dom/client";
 import ReactDOMServer from "react-dom/server";
 import { Async } from "./Async";
 import { Client } from "./Client";
-import { Html, HtmlProps } from "./Html";
+import { ErrorHtml, Html, HtmlErrorProps, HtmlProps } from "./Html";
 import { IonAppContext } from "./IonAppContext";
+import { OnRouteResolveCallback, RedirectCallback } from "./Router";
 import type { ApiImplementation, ApiManifest, ApiScheme } from "./server";
 import type { Manifest } from "./server/Manifest";
 import { getSSRData } from "./SSRData";
+import { CancelToken } from "./utils";
+import { cloneError } from "./utils/object";
 
 export namespace IonApp
 {
@@ -20,7 +23,7 @@ export namespace IonApp
 			let r = JSON.parse(data);
 			if (r.data)
 				return r.data;
-			else if(r.error)
+			else if (r.error)
 				throw r.error;
 			return r;
 		}
@@ -29,6 +32,11 @@ export namespace IonApp
 			return data;
 		}
 	}
+
+	const defaultOptions: Required<Options> = {
+		html: Html,
+		errorHtml: ErrorHtml
+	};
 
 	export class Component<T extends React.FC<any>>
 	{
@@ -43,32 +51,33 @@ export namespace IonApp
 			this.context = IonAppContext.create(env.isClient ? clientFetcher : async () => { }, false);
 		}
 
-		public wrap(context: IonAppContext.Type = this.context)
+		public wrap(url: string, onRedirect: RedirectCallback, context: IonAppContext.Type = this.context)
 		{
 			return (
-				<IonAppContext.Provider context={context}>
+				<IonAppContext.Provider context={context} onRedirect={onRedirect} onResolveRoute={this.resolveRoute(clientFetcher)} url={url}>
 					{React.createElement(this.fc)}
 				</IonAppContext.Provider>
 			);
 		}
 
-		public async resolve(fetcher: Fetcher, hydrate: boolean = false, ctx: Async.ContextType = this.context.async)
+		public async resolve(url: string, onRedirect: RedirectCallback, fetcher: Fetcher, hydrate: boolean = false, ctx: Async.ContextType = this.context.async)
 		{
 			let context = IonAppContext.create(fetcher, !hydrate, hydrate, ctx);
 
-			ReactDOMServer.renderToStaticMarkup(this.wrap(context));
+			ReactDOMServer.renderToStaticMarkup(this.wrap(url, onRedirect, context));
 
 			let newData = await Async.resolveComponents(context.async);
 
 			while (Object.keys(newData).length > 0)
 			{
-				this.context.async.data = { ...this.context.async.data, ...newData };
+				ctx.data = { ...ctx.data, ...newData };
 
 				if (hydrate)
-					this.context.async.cache = context.async.cache;
+					ctx.cache = context.async.cache;
 
 				context = IonAppContext.create(fetcher, !hydrate, hydrate, ctx);
-				ReactDOMServer.renderToStaticMarkup(this.wrap(context));
+				ReactDOMServer.renderToStaticMarkup(this.wrap(url, onRedirect, context));
+
 				newData = await Async.resolveComponents(context.async);
 			}
 
@@ -76,28 +85,81 @@ export namespace IonApp
 				this.context.async.cache = context.async.cache;
 		}
 
-		protected async renderToString(appName: string, manifest: Manifest, fetcher: Fetcher, apiManifest: ApiManifest)
+		protected async renderToString(url: string, onRedirect: RedirectCallback, appName: string, manifest: Manifest, fetcher: Fetcher, apiManifest: ApiManifest)
 		{
-			await this.resolve(fetcher);
+			try
+			{
+				await this.resolve(url, onRedirect, fetcher, false);
 
-			const paths = Async.getDynamicPaths(this.context.async);
+				const paths = Async.getDynamicPaths(this.context.async);
 
-			const appString = ReactDOMServer.renderToString(this.wrap());
+				const appString = ReactDOMServer.renderToString(this.wrap(url, onRedirect));
 
-			return ReactDOMServer.renderToStaticMarkup(React.createElement(this.options.html, {
-				appString,
-				scripts: manifest.get(appName, paths, "js"),
-				styles: manifest.get(appName, paths, "css"),
-				ssrData: {
-					async: this.context.async.resolvedDataStack,
-					api: apiManifest
-				}
-			}));
+				return ReactDOMServer.renderToStaticMarkup(React.createElement(this.options.html, {
+					appString,
+					scripts: manifest.get(appName, paths, "js"),
+					styles: manifest.get(appName, paths, "css"),
+					ssrData: {
+						async: this.context.async.resolvedDataStack,
+						api: apiManifest
+					}
+				}));
+			}
+			catch (e)
+			{
+				return ReactDOMServer.renderToStaticMarkup(React.createElement(this.options.errorHtml, {
+					error: cloneError(e)
+				}));
+			}
+
 		}
 
-		public async render(appName: string, manifest: Manifest, fetcher: Fetcher, apiManifest: ApiManifest)
+		public async render(url: string, onRedirect: RedirectCallback, appName: string, manifest: Manifest, fetcher: Fetcher, apiManifest: ApiManifest)
 		{
-			return await new IonApp.Component(this.fc, this.options).renderToString(appName, manifest, fetcher, apiManifest);
+			return await new IonApp.Component(this.fc, this.options).renderToString(url, onRedirect, appName, manifest, fetcher, apiManifest);
+		}
+
+
+		private readonly resolveRoute = (fetcher: IonApp.Fetcher) => async (from: string, to: string, token: CancelToken<string>, onResolve: () => any) => 
+		{
+			let ctx = IonAppContext.create(fetcher, true, false, this.context.async);
+
+			let passedUrls = [from];
+
+			let redirected = true;
+
+			let redirectedUrl = to;
+
+			const onRedirect: RedirectCallback = (rurl) =>
+			{
+				redirectedUrl = rurl;
+				redirected = true;
+
+				return false;
+			}
+
+			while (redirected)
+			{
+
+				if (passedUrls.includes(redirectedUrl))
+				{
+					console.warn(`redirect cycle detected! [${[...passedUrls, redirectedUrl].join(" -> ")}]`);
+					return from;
+				}
+				else
+				{
+					passedUrls.push(redirectedUrl);
+				}
+				ctx = IonAppContext.create(fetcher, true, false, this.context.async);
+				redirected = false;
+				await this.resolve(redirectedUrl, onRedirect, fetcher, false, ctx.async);
+				if (token.isCanceled)
+					return from;
+			}
+
+			this.context.async.data = ctx.async.data;
+
+			return redirectedUrl;
 		}
 
 		public async mount()
@@ -117,23 +179,22 @@ export namespace IonApp
 			};
 
 			const ssrData = getSSRData();
-			
+
 			Client.updateApi(ssrData.api);
 
 			this.context.async.resolvedDataStack = ssrData.async;
 
-			await this.resolve(clientFetcher, true);
+			const url = window.location.pathname + window.location.search + window.location.hash;
+
+			await this.resolve(url, () => { throw new Error("") }, clientFetcher, true);
 
 			const rootElement = initRoot();
-			ReactDOM.hydrateRoot(rootElement, this.wrap());
+
+			ReactDOM.hydrateRoot(rootElement, this.wrap(url, () => true));
 		}
 
 		public updateApiForServer = <T extends ApiScheme>(apiBasePath: string, apiImplementation: ApiImplementation<T>) => Client.updateApiForServer(apiBasePath, apiImplementation)
 	}
-
-	const defaultOptions: Required<Options> = {
-		html: Html
-	};
 
 	export const create = <T extends React.FC<any>>(fc: T, options: Options = {}): Component<T> =>
 	{
@@ -147,6 +208,7 @@ export namespace IonApp
 
 	type Options = {
 		html?: React.FC<HtmlProps>;
+		errorHtml?: React.FC<HtmlErrorProps<{}>>;
 	};
 
 	export type Fetcher = (input: RequestInfo | URL, init?: RequestInit | undefined) => Promise<any>;

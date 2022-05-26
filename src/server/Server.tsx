@@ -118,8 +118,7 @@ export class Server
 		return async (req: express.Request, res: express.Response) =>
 		{
 			const renderer = new Renderer(this, component, req, res);
-			if (!await renderer.render(appName, this.manifest))
-				res.send("error?");
+			await renderer.render(appName, this.manifest);
 		};
 	}
 

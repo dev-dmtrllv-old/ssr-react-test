@@ -198,6 +198,8 @@ export namespace Async
 
 		Object.keys(context.resolvers).forEach((k, i) => map[k] = data[i]);
 
+		context.resolvers = {};
+
 		return map;
 	}
 

@@ -41,7 +41,7 @@ export const ErrorHtml = <P extends {}>({ error, ...props }: HtmlErrorProps<P>) 
 		<HtmlBase {...props as any}>
 			<h1>{error.message}</h1>
 			<h3>{error.message}</h3>
-			{error.stack.split("\n").map((s, i) => <span key={i}>{s}</span>)}
+			{error.stack?.split("\n").map((s, i) => <span key={i}>{s}<br/></span>)}
 		</HtmlBase>
 	);
 }
@@ -61,9 +61,5 @@ export type HtmlProps = {
 } & Omit<HtmlBaseProps, "children">;
 
 export type HtmlErrorProps<P> = P & {
-	error: {
-		name: string;
-		message: string;
-		stack: string;
-	}
+	error: Error;
 } & Omit<HtmlBaseProps, "children">;

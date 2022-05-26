@@ -4,6 +4,7 @@ import { ApiManifest } from "./server";
 export type SSRData = {
 	async: Async.ContextType["resolvedDataStack"];
 	api: ApiManifest;
+	renderError?: Error;
 };
 
 export const getSSRData = () =>

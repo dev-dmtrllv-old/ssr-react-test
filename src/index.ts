@@ -21,6 +21,7 @@ export * from "./IonApp";
 export * from "./Async";
 export * from "./Client";
 export * from "./Html";
+export * from "./Router";
 export * as Utils from "./utils";
 
 namespace Ion

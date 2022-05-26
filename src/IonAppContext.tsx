@@ -1,6 +1,7 @@
 import React from "react";
 import { Async } from "./Async";
 import type { IonApp } from "./IonApp";
+import { OnRouteResolveCallback, Router } from "./Router";
 
 export namespace IonAppContext
 {
@@ -24,13 +25,15 @@ export namespace IonAppContext
 
 	const Context = React.createContext<RenderType>(create(async () => { return { error: new Error(`No valid IonAppContext provided!`) } }, false));
 
-	export const Provider = ({ context, children }: React.PropsWithChildren<{ context: Type }>) =>
+	export const Provider = ({ context, onRedirect, onResolveRoute, url, children }: React.PropsWithChildren<AppContextProps>) =>
 	{
 		const { isResolving, async, isHydrating } = context;
 		return (
 			<Context.Provider value={{ isResolving, isHydrating }}>
 				<Async.Provider context={async}>
-					{children}
+					<Router onRedirect={onRedirect} resolve={onResolveRoute} url={url}>
+						{children}
+					</Router>
 				</Async.Provider>
 			</Context.Provider>
 		);
@@ -45,5 +48,12 @@ export namespace IonAppContext
 
 	export type Type = RenderType & {
 		async: Async.ContextType;
+	}
+
+	type AppContextProps = {
+		url: string;
+		context: Type;
+		onRedirect: (to: string) => any;
+		onResolveRoute: OnRouteResolveCallback;
 	}
 }

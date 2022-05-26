@@ -1,4 +1,3 @@
-import { Response, Request } from "express";
 import http from "http";
 import https from "https";
 import { isSubClass } from "../utils";
@@ -94,6 +93,8 @@ export class Api implements IApi
 	{
 		this.session = session;
 	}
+
+	public getApi<T extends Api>(apiType: ApiType<T>): T { return new apiType(this.session); }
 
 	public readonly fetch = (url: string, options?: Omit<http.RequestOptions, "host" | "path"> & { secure?: boolean }) => new Promise<string>((res, rej) => 
 	{
