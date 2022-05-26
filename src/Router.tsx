@@ -1,6 +1,5 @@
 import React from "react";
-import { IonAppContext } from "./IonAppContext";
-import { CancelToken } from "./utils";
+import { CancelToken, object } from "./utils";
 import { getClassFromProps } from "./utils/react";
 
 const RouterContext = React.createContext<RouterContextType>({
@@ -16,7 +15,12 @@ const RouterContext = React.createContext<RouterContextType>({
 	useRouteChange: () => React.useEffect(() => { }, [])
 });
 
-const RouteContext = React.createContext<RouteContext>({});
+const RouteContext = React.createContext<RouteContextType>({
+	hash: "",
+	params: {},
+	path: "",
+	query: {}
+});
 
 const useRouterContext = () => React.useContext(RouterContext);
 
@@ -146,7 +150,8 @@ export const Router = ({ children, url, onRedirect, resolve }: React.PropsWithCh
 				}
 			}
 		},
-		match(url: string, exact?: boolean, params: { [key: string]: string } = {})
+		/* TODO: if there are params in the url and not exact, allow matching shorter urls!  */
+		match(url: string, exact?: boolean, params: ObjectMap<string> = {})
 		{
 			url = url.split("?")[0];
 
@@ -195,15 +200,24 @@ export const Router = ({ children, url, onRedirect, resolve }: React.PropsWithCh
 
 export const Route = ({ path, exact, component, children }: React.PropsWithChildren<RouteProps>) =>
 {
-	const { match } = useRouterContext();
+	const { match, ...ctx } = useRouterContext();
 
-	if (!match(path, exact))
+	let params: ObjectMap<string> = {};
+
+	if (!match(path, exact, params))
 		return null;
 
 	if (component)
 		return React.createElement(component, { children });
 
-	return <>{children}</>;
+	const routeContext: RouteContextType = {
+		path: ctx.path,
+		hash: ctx.hash,
+		query: object.deserialize(ctx.query),
+		params,
+	};
+
+	return <RouteContext.Provider value={routeContext}>{children}</RouteContext.Provider>;
 }
 
 export const Redirect = ({ from, exact, to }: RedirectProps) =>
@@ -274,7 +288,7 @@ type LinkProps = {
 
 type RouterContextType = RouterState & {
 	routeTo: (path: string) => any;
-	match: (path: string, exact?: boolean) => boolean;
+	match: (path: string, exact?: boolean, params?: ObjectMap<string>) => boolean;
 	redirect: RedirectCallback;
 	addChangeListener: (listener: OnRouteChangeListener) => void;
 	removeChangeListener: (listener: OnRouteChangeListener) => void;
@@ -283,8 +297,11 @@ type RouterContextType = RouterState & {
 
 export type RedirectCallback = (to: string) => boolean;
 
-export type RouteContext = {
-
+export type RouteContextType = {
+	readonly path: string;
+	readonly query: Readonly<ObjectMap<string>>;
+	readonly hash: string;
+	readonly params: Readonly<ObjectMap<string>>;
 };
 
 type OnRouteChangeListener = (event: ChangeEventInfo) => any;

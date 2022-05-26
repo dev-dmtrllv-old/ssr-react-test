@@ -28,6 +28,7 @@ namespace Ion
 {
 	export const createApp = IonApp.create;
 	export const createAsync = Async.create;
+	export const createDynamic = Async.createDynamic;
 };
 
 export default Ion;

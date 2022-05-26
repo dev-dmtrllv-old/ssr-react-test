@@ -22,7 +22,7 @@ export namespace Async
 	});
 
 	/** @internal */
-	export let serverApiFetcher: IonApp.Fetcher = async () => {};
+	export let serverApiFetcher: IonApp.Fetcher = async () => { };
 
 	export const Provider = ({ context, children }: React.PropsWithChildren<{ context: ContextType }>) =>
 	{
@@ -214,7 +214,8 @@ export namespace Async
 			if (d?.data?.__IMPORT_PATH__)
 			{
 				paths.push(d.data.__IMPORT_PATH__);
-				context.data[id].data = { __IS_DYNAMIC_IMPORT__: true };
+				delete d.data.__IMPORT_PATH__;
+				context.data[id].data = { ...context.data[id].data, __IS_DYNAMIC_IMPORT__: true };
 			}
 		});
 		return paths;
@@ -410,6 +411,51 @@ export namespace Async
 
 		return c;
 	}
+
+
+	type PropsOf<T> = T extends React.FC<infer Props> ? Props : {};
+
+	const DynamicErrorComponent = ({ error }: React.PropsWithoutRef<{ error: Error }>) => (
+		<div>
+			{error.message !== error.name ? <><h1>{error.name}</h1><h3>{error.message}</h3></> : <h1>{error.name}</h1>}
+			{error.stack?.split("\n").map((s, i) => <span key={i}>{s}<br /></span>)}
+		</div>
+	);
+
+	const DynamicLoadingComponent = () => <p>Loading...</p>;
+
+	const DynamicCanceledComponent = () => <p>Canceled!</p>;
+
+	type DynamicProps = {
+		onLoad?: React.FC<any>;
+		onError?: React.FC<{ error?: Error; }>;
+		onCanceled?: React.FC<{ reason?: string }>;
+	};
+
+	export const createDynamic = <M extends {}, P extends {}>(importer: Async.Resolver<P, M>, key: keyof Awaited<M>) => Async.create<P & DynamicProps & PropsOf<Awaited<M>[keyof Awaited<M>]>, M>(importer, ({ abort, canceled, isInvalidated, isLoading, data, error, ...props }) => 
+	{
+		if (data)
+		{
+			if ((data as any)[key])
+				return React.createElement((data as any)[key], props);
+
+			else if (!(data as any).__IS_DYNAMIC_IMPORT__)
+				console.warn(`Invalid dynamic component!`);
+
+			return null;
+
+		}
+		else if (error)
+			return React.createElement(DynamicErrorComponent, { error });
+		else if (isLoading)
+			return React.createElement(DynamicLoadingComponent);
+		else if (canceled)
+			return React.createElement(DynamicCanceledComponent, { reason: canceled });
+		else
+			console.warn(`Could not render DynamicComponent with importer ${importer.toString()} and key ${key.toString()}`);
+		return null;
+	});
+
 
 	export type Resolver<Props extends {}, Data> = (data: Omit<Props, keyof AsyncProps | "children"> & { fetch: IonApp.Fetcher }) => Data;
 
