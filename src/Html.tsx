@@ -37,6 +37,11 @@ export const Html: React.FC<HtmlProps> = ({ appString, ssrData, ...props }) =>
 
 export const ErrorHtml = <P extends {}>({ error, ...props }: HtmlErrorProps<P>) =>
 {
+	React.useEffect(() => 
+	{
+		console.error(error);
+	}, []);
+
 	return (
 		<HtmlBase {...props as any}>
 			<h1>{error.message}</h1>
