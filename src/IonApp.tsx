@@ -89,7 +89,18 @@ export namespace IonApp
 		{
 			try
 			{
-				await this.resolve(url, onRedirect, fetcher, false);
+				let continueRender = true;
+
+				const onRedirectWrapper = (to: string) =>
+				{
+					continueRender = onRedirect(to);
+					return continueRender;
+				}
+
+				await this.resolve(url, onRedirectWrapper, fetcher, false);
+
+				if(!continueRender)
+					return;
 
 				const paths = Async.getDynamicPaths(this.context.async);
 
@@ -107,6 +118,7 @@ export namespace IonApp
 			}
 			catch (e)
 			{
+				console.error(e);
 				return ReactDOMServer.renderToStaticMarkup(React.createElement(this.options.errorHtml, {
 					error: cloneError(e)
 				}));

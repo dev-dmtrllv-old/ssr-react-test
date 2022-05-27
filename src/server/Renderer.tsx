@@ -68,7 +68,7 @@ export class Renderer
 		}
 		catch
 		{
-			throw response;
+			return response;
 		}
 	}
 
@@ -80,9 +80,10 @@ export class Renderer
 
 			const onRedirect = (url: string) =>
 			{
+				console.log("redirected to ", url)
 				redirectURL = url;
 				this.res.redirect(url);
-				return onRedirect(url);
+				return false;
 			}
 
 			const html = await this.component.render(this.req.url, onRedirect, appName, manifest, this.fetcher, this.server.apiManifest);
