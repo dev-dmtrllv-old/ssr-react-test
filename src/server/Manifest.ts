@@ -24,7 +24,9 @@ export class Manifest
 	private readonly defaultScripts: string[] = [];
 	private readonly defaultStyles: string[] = [];
 
-	public getChunkId = (path: string) => this.data.chunks[path].id;
+	public getChunkId = (path: string): string | number => this.data.chunks[path].id;
+
+	public getAppPaths = (name: string): string[] => this.data.main[name].files;
 
 	public constructor()
 	{

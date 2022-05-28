@@ -1,7 +1,7 @@
 {
-	"name": "ion",
-	"version": "1.0.0",
-	"description": "",
+	"name": "ion-ssr",
+	"version": "0.1.0",
+	"description": "Server side rendered app framework with React.",
 	"main": "ion.js",
 	"scripts": {
 		"build-lib": "node scripts/build-lib",
@@ -11,8 +11,14 @@
 		"watch": "node scripts/watch",
 		"build": "node scripts/build"
 	},
+	"publishConfig": {
+		"registry": "https://registry.npmjs.org/"
+	},
 	"keywords": [],
-	"author": "",
+	"author": {
+		"email": "dev.dmtrllv@gmail.com",
+		"name": "Dimitri Lilov"
+	},
 	"license": "ISC",
 	"bin": {
 		"ion": "cli-dist/index.js"

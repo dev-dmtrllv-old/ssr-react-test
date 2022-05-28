@@ -25,13 +25,13 @@ export namespace IonAppContext
 
 	const Context = React.createContext<RenderType>(create(async () => { return { error: new Error(`No valid IonAppContext provided!`) } }, false));
 
-	export const Provider = ({ context, onRedirect, onResolveRoute, url, children }: React.PropsWithChildren<AppContextProps>) =>
+	export const Provider = ({ context, onRedirect, onResolveRoute, url, children, title = "" }: React.PropsWithChildren<AppContextProps>) =>
 	{
 		const { isResolving, async, isHydrating } = context;
 		return (
 			<Context.Provider value={{ isResolving, isHydrating }}>
 				<Async.Provider context={async}>
-					<Router onRedirect={onRedirect} resolve={onResolveRoute} url={url}>
+					<Router onRedirect={onRedirect} resolve={onResolveRoute} url={url} title={title}>
 						{children}
 					</Router>
 				</Async.Provider>
@@ -53,7 +53,9 @@ export namespace IonAppContext
 	type AppContextProps = {
 		url: string;
 		context: Type;
+		title?: string;
 		onRedirect: (to: string) => any;
 		onResolveRoute: OnRouteResolveCallback;
+		onTitleChange: (title: string) => any;
 	}
 }

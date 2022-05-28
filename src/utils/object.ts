@@ -17,7 +17,8 @@ export const deserialize = (str: string) =>
 	str.split("&").forEach(p => 
 	{
 		const [k, v] = p.split("=");
-		o[k] = v;
+		if (k.length > 0)
+			o[k] = v;
 	});
 	return o;
 }
@@ -82,13 +83,13 @@ export const equals = <T>(a: T, b: T) =>
 			{
 				const keysA = Object.keys(a);
 				const keysB = Object.keys(b);
-				if(!equals(keysA, keysB))
+				if (!equals(keysA, keysB))
 					return false;
-				
-				for(const key of keysA)
-					if(!equals(a[key], b[key]))
+
+				for (const key of keysA)
+					if (!equals(a[key], b[key]))
 						return false;
-				
+
 				return true;
 			}
 	}

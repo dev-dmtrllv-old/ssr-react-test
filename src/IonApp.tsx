@@ -5,10 +5,10 @@ import { Async } from "./Async";
 import { Client } from "./Client";
 import { ErrorHtml, Html, HtmlErrorProps, HtmlProps } from "./Html";
 import { IonAppContext } from "./IonAppContext";
-import { OnRouteResolveCallback, RedirectCallback } from "./Router";
+import { RedirectCallback } from "./Router";
 import type { ApiImplementation, ApiManifest, ApiScheme } from "./server";
 import type { Manifest } from "./server/Manifest";
-import { getSSRData } from "./SSRData";
+import SSRData, { getSSRData } from "./SSRData";
 import { CancelToken } from "./utils";
 import { cloneError } from "./utils/object";
 
@@ -51,20 +51,22 @@ export namespace IonApp
 			this.context = IonAppContext.create(env.isClient ? clientFetcher : async () => { }, false);
 		}
 
-		public wrap(url: string, onRedirect: RedirectCallback, context: IonAppContext.Type = this.context)
+		public wrap(title: string, url: string, onRedirect: RedirectCallback, onTitleChange: (title: string) => any = () => {}, context: IonAppContext.Type = this.context)
 		{
 			return (
-				<IonAppContext.Provider context={context} onRedirect={onRedirect} onResolveRoute={this.resolveRoute(clientFetcher)} url={url}>
+				<IonAppContext.Provider context={context} onRedirect={onRedirect} onResolveRoute={this.resolveRoute(title, clientFetcher)} title={title} url={url} onTitleChange={onTitleChange}>
 					{React.createElement(this.fc)}
 				</IonAppContext.Provider>
 			);
 		}
 
-		public async resolve(url: string, onRedirect: RedirectCallback, fetcher: Fetcher, hydrate: boolean = false, ctx: Async.ContextType = this.context.async)
+		public async resolve(title: string, url: string, onRedirect: RedirectCallback, fetcher: Fetcher, hydrate: boolean = false, ctx: Async.ContextType = this.context.async): Promise<ResolveData>
 		{
+			let resolvedTitle = title;
+
 			let context = IonAppContext.create(fetcher, !hydrate, hydrate, ctx);
 
-			ReactDOMServer.renderToStaticMarkup(this.wrap(url, onRedirect, context));
+			ReactDOMServer.renderToStaticMarkup(this.wrap(title, url, onRedirect, (t) => resolvedTitle = t, context));
 
 			let newData = await Async.resolveComponents(context.async);
 
@@ -76,16 +78,20 @@ export namespace IonApp
 					ctx.cache = context.async.cache;
 
 				context = IonAppContext.create(fetcher, !hydrate, hydrate, ctx);
-				ReactDOMServer.renderToStaticMarkup(this.wrap(url, onRedirect, context));
+				ReactDOMServer.renderToStaticMarkup(this.wrap(title, url, onRedirect, (t) => resolvedTitle = t, context));
 
 				newData = await Async.resolveComponents(context.async);
 			}
 
 			if (hydrate)
 				this.context.async.cache = context.async.cache;
+
+			return {
+				title: resolvedTitle
+			}
 		}
 
-		protected async renderToString(url: string, onRedirect: RedirectCallback, appName: string, manifest: Manifest, fetcher: Fetcher, apiManifest: ApiManifest)
+		protected async renderToString(title: string, url: string, onRedirect: RedirectCallback, appName: string, manifest: Manifest, fetcher: Fetcher, apiManifest: ApiManifest, apps: SSRData["apps"])
 		{
 			try
 			{
@@ -97,22 +103,25 @@ export namespace IonApp
 					return continueRender;
 				}
 
-				await this.resolve(url, onRedirectWrapper, fetcher, false);
-
+				const resolvedData = await this.resolve(title, url, onRedirectWrapper, fetcher, false);
+				
 				if(!continueRender)
 					return;
 
 				const paths = Async.getDynamicPaths(this.context.async);
 
-				const appString = ReactDOMServer.renderToString(this.wrap(url, onRedirect));
+				const appString = ReactDOMServer.renderToString(this.wrap(title, url, onRedirect));
 
 				return ReactDOMServer.renderToStaticMarkup(React.createElement(this.options.html, {
+					title: resolvedData.title,
 					appString,
 					scripts: manifest.get(appName, paths, "js"),
 					styles: manifest.get(appName, paths, "css"),
 					ssrData: {
 						async: this.context.async.resolvedDataStack,
-						api: apiManifest
+						api: apiManifest,
+						apps,
+						title
 					}
 				}));
 			}
@@ -126,13 +135,13 @@ export namespace IonApp
 
 		}
 
-		public async render(url: string, onRedirect: RedirectCallback, appName: string, manifest: Manifest, fetcher: Fetcher, apiManifest: ApiManifest)
+		public async render(title: string, url: string, onRedirect: RedirectCallback, appName: string, manifest: Manifest, fetcher: Fetcher, apiManifest: ApiManifest, apps: SSRData["apps"])
 		{
-			return await new IonApp.Component(this.fc, this.options).renderToString(url, onRedirect, appName, manifest, fetcher, apiManifest);
+			return await new IonApp.Component(this.fc, this.options).renderToString(title, url, onRedirect, appName, manifest, fetcher, apiManifest, apps);
 		}
 
 
-		private readonly resolveRoute = (fetcher: IonApp.Fetcher) => async (from: string, to: string, token: CancelToken<string>, onResolve: () => any) => 
+		private readonly resolveRoute = (title: string, fetcher: IonApp.Fetcher) => async (from: string, to: string, token: CancelToken<string>, onResolve: () => any) => 
 		{
 			let ctx = IonAppContext.create(fetcher, true, false, this.context.async);
 
@@ -164,7 +173,7 @@ export namespace IonApp
 				}
 				ctx = IonAppContext.create(fetcher, true, false, this.context.async);
 				redirected = false;
-				await this.resolve(redirectedUrl, onRedirect, fetcher, false, ctx.async);
+				await this.resolve(title, redirectedUrl, onRedirect, fetcher, false, ctx.async);
 				if (token.isCanceled)
 					return from;
 			}
@@ -198,11 +207,11 @@ export namespace IonApp
 
 			const url = window.location.pathname + window.location.search + window.location.hash;
 
-			await this.resolve(url, () => { throw new Error("") }, clientFetcher, true);
+			await this.resolve(ssrData.title, url, () => { throw new Error("") }, clientFetcher, true);
 
 			const rootElement = initRoot();
 
-			ReactDOM.hydrateRoot(rootElement, this.wrap(url, () => true));
+			ReactDOM.hydrateRoot(rootElement, this.wrap(ssrData.title, url, () => true));
 		}
 
 		public updateApiForServer = <T extends ApiScheme>(apiBasePath: string, apiImplementation: ApiImplementation<T>) => Client.updateApiForServer(apiBasePath, apiImplementation)
@@ -224,4 +233,8 @@ export namespace IonApp
 	};
 
 	export type Fetcher = (input: RequestInfo | URL, init?: RequestInit | undefined) => Promise<any>;
+
+	type ResolveData = {
+		title: string;
+	};
 }

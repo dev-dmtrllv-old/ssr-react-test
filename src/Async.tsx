@@ -412,9 +412,6 @@ export namespace Async
 		return c;
 	}
 
-
-	type PropsOf<T> = T extends React.FC<infer Props> ? Props : {};
-
 	const DynamicErrorComponent = ({ error }: React.PropsWithoutRef<{ error: Error }>) => (
 		<div>
 			{error.message !== error.name ? <><h1>{error.name}</h1><h3>{error.message}</h3></> : <h1>{error.name}</h1>}
@@ -432,7 +429,7 @@ export namespace Async
 		onCanceled?: React.FC<{ reason?: string }>;
 	};
 
-	export const createDynamic = <M extends {}, P extends {}>(importer: Async.Resolver<P, M>, key: keyof Awaited<M>) => Async.create<P & DynamicProps & PropsOf<Awaited<M>[keyof Awaited<M>]>, M>(importer, ({ abort, canceled, isInvalidated, isLoading, data, error, ...props }) => 
+	export const createDynamic = <M extends {}, P extends {}, K extends keyof A, A = Awaited<M>>(importer: Async.Resolver<P, M>, key: K) => Async.create<P & DynamicProps & (A[K] extends (props: infer P) => any ? P : {}), M>(importer, ({ abort, canceled, isInvalidated, isLoading, data, error, ...props }) => 
 	{
 		if (data)
 		{

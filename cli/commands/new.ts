@@ -26,67 +26,40 @@ const createPackageJson = (name: string) => ({
 		"watch": "ion watch",
 		"build": "ion build"
 	},
-	"license": "ISC",
-	"devDependencies": {
-		"@types/react": "^18.0.9",
-		"@types/react-dom": "^18.0.4",
-		"@types/webpack-env": "^1.17.0",
-		"fork-ts-checker-webpack-plugin": "^7.2.11",
-		"source-map-loader": "^3.0.1",
-		"ts-loader": "^9.3.0",
-		"typescript": "^4.6.4",
-		"webpack": "^5.72.1",
-		"webpack-node-externals": "^3.0.0"
-	},
-	"dependencies": {
-		"@types/body-parser": "^1.19.2",
-		"@types/express": "^4.17.13",
-		"@types/express-session": "^1.17.4",
-		"@types/mysql": "^2.15.21",
-		"@types/node": "^17.0.35",
-		"body-parser": "^1.20.0",
-		"css-loader": "^6.7.1",
-		"express": "^4.18.1",
-		"express-session": "^1.17.3",
-		"file-loader": "^6.2.0",
-		"ignore-loader": "^0.1.2",
-		"mini-css-extract-plugin": "^2.6.0",
-		"mysql": "^2.18.1",
-		"node-sass": "^7.0.1",
-		"raw-loader": "^4.0.2",
-		"react": "^18.1.0",
-		"react-dom": "^18.1.0",
-		"sass-loader": "^13.0.0",
-		"socket.io": "^4.5.1",
-		"socket.io-client": "^4.5.1",
-		"style-loader": "^3.3.1",
-		"url-loader": "^4.1.1"
-	}
+	"license": "ISC"
 });
 
 const tsConfig = {
-	"compilerOptions": {
-		"jsx": "react",
-		"allowSyntheticDefaultImports": true,
-		"esModuleInterop": true,
-		"exactOptionalPropertyTypes": true,
-		"experimentalDecorators": true,
-		"strictBindCallApply": true,
-		"strictFunctionTypes": true,
-		"strictNullChecks": true,
-		"strictPropertyInitialization": true,
-		"target": "es2017",
-		"module": "esnext",
-		"moduleResolution": "Node",
-		"outDir": "dist",
-		"rootDir": "src"
-	},
-	"include": [
-		"./src/**/*"
-	],
-	"exclude": [
-		"./node_modules/**/*"
-	]
+    "compilerOptions": {
+        "jsx": "react",
+        "allowSyntheticDefaultImports": true,
+        "esModuleInterop": true,
+        "exactOptionalPropertyTypes": true,
+        "experimentalDecorators": true,
+        "strictBindCallApply": true,
+        "strictFunctionTypes": true,
+        "strictNullChecks": true,
+        "strictPropertyInitialization": true,
+        "target": "es2017",
+        "module": "esnext",
+        "moduleResolution": "Node",
+        "outDir": "./dist",
+        "rootDir": "./src",
+		"lib": [
+			"DOM",
+			"DOM.Iterable",
+			"ES2015",
+			"ES2016",
+			"ES2017",
+			"ES2018",
+			"ES2019",
+			"ES2020",
+			"ES2021"
+		]
+    },
+    "include": [
+        "./src/**/*"
+    ]
 };
 
 const appEntryScript = (name: string) => `import { Ion, Async } from "ion";
@@ -115,7 +88,8 @@ export default class New extends Command<NewArgs>
 
 		if (fs.existsSync(p))
 		{
-			const name = await this.ask("Name of the project", undefined, [], true);
+			console.log(`TODO!!! add apps to ion config!`);
+			// const name = await this.ask("Name of the project", undefined, [], true);
 		}
 		else // create new project
 		{
@@ -150,13 +124,11 @@ export default class New extends Command<NewArgs>
 
 				const npm = `npm${os.platform() === "win32" ? ".cmd" : ""}`
 
-				let p = spawn(npm, ["i"], { cwd: args.path!, stdio: "inherit" });
+				let p = spawn(npm, ["i", "ion-ssr"], { cwd: args.path!, stdio: "inherit" });
 
 				p.stdout = process.stdout;
 				p.stderr = process.stderr;
 				p.stdin = process.stdin;
-
-				p.on("exit", () => spawn(npm, ["i", path.resolve(__dirname, "../../"), "--save"], { cwd: args.path!, stdio: "inherit" }));
 			}
 		}
 	}

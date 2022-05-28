@@ -72,7 +72,7 @@ export class Renderer
 		}
 	}
 
-	public async render(appName: string, manifest: Manifest)
+	public async render(appName: string, title: string, manifest: Manifest)
 	{
 		try
 		{
@@ -80,13 +80,12 @@ export class Renderer
 
 			const onRedirect = (url: string) =>
 			{
-				console.log("redirected to ", url)
 				redirectURL = url;
 				this.res.redirect(url);
 				return false;
 			}
 
-			const html = await this.component.render(this.req.url, onRedirect, appName, manifest, this.fetcher, this.server.apiManifest);
+			const html = await this.component.render(title, this.req.url, onRedirect, appName, manifest, this.fetcher, this.server.apiManifest, this.server.appsSSRData);
 
 			if (redirectURL !== this.req.url)
 				return false;

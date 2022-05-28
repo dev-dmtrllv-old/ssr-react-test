@@ -13,6 +13,7 @@ import MySQLSessionStore from "express-mysql-session";
 import { cloneError } from "../utils/object";
 import { Renderer } from "./Renderer";
 import { networkInterfaces } from "os";
+import SSRData from "../SSRData";
 
 const MySQLStore = MySQLSessionStore(session);
 
@@ -50,6 +51,7 @@ export class Server
 	public readonly host: string;
 	public readonly port: number;
 	public readonly appConfig: AppConfig;
+	public readonly appsSSRData: Readonly<SSRData["apps"]>;
 
 	private _apiManifest: Readonly<ApiManifest> = {
 		routes: {},
@@ -74,7 +76,19 @@ export class Server
 	{
 		this.appConfig = new AppConfig();
 
-		const { server } = this.appConfig.data;
+		const { server, apps } = this.appConfig.data;
+
+		const appsMap: SSRData["apps"] = {};
+
+		Object.keys(apps).forEach(name => 
+		{
+			const { url } = apps[name];
+			appsMap[url] = this.manifest.getAppPaths(name);
+		});
+
+		this.appsSSRData = {
+
+		};
 
 		this.host = server?.host || Server.getDefaultHost();
 		this.port = server?.port || 8080;
@@ -94,9 +108,9 @@ export class Server
 			name: "SID",
 			resave: false,
 			secret: "secret",
+			saveUninitialized: false,
 			...(config.session || {}),
 		}));
-
 
 		this.express.use(express.static(path.resolve(process.cwd(), "public")));
 	}
@@ -118,7 +132,7 @@ export class Server
 		return async (req: express.Request, res: express.Response) =>
 		{
 			const renderer = new Renderer(this, component, req, res);
-			await renderer.render(appName, this.manifest);
+			await renderer.render(appName, appInfo.title || "", this.manifest);
 		};
 	}
 
@@ -178,10 +192,12 @@ export class Server
 			let url = apps[name].url;
 
 			if (url === "/" || url === "*")
+			{
 				globalApp = name;
+			}
 			else
 			{
-				url = url.endsWith("*") ? url : `${url}/*`;
+				url = url.endsWith("*") ? url : `${url}*`;
 				console.log(`Set app ${name} with path ${url}`);
 				this.express.get(url, this.onAppRoute(name, appComponents[name], apps[name]));
 			}

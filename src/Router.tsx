@@ -1,4 +1,5 @@
 import React from "react";
+import { IonAppContext } from "./IonAppContext";
 import { CancelToken, object } from "./utils";
 import { getClassFromProps } from "./utils/react";
 
@@ -7,33 +8,51 @@ const RouterContext = React.createContext<RouterContextType>({
 	query: "",
 	hash: "",
 	url: "",
+	title: "",
 	routeTo: () => { },
 	match: () => false,
 	redirect: () => false,
 	addChangeListener: () => { },
 	removeChangeListener: () => { },
-	useRouteChange: () => React.useEffect(() => { }, [])
+	useRouteChange: (listener) => useRouteChange(listener),
+	setTitle: (title) => title
 });
 
 const RouteContext = React.createContext<RouteContextType>({
 	hash: "",
 	params: {},
 	path: "",
-	query: {}
+	query: {},
+	setTitle: (t) => t
 });
-
-const useRouterContext = () => React.useContext(RouterContext);
 
 export const useRouter = (): Readonly<RouterContextType> => React.useContext(RouterContext);
 
 export const useRoute = () => React.useContext(RouteContext);
 
-export const splitUrl = (url: string): RouterState =>
+export const useRouteParams = <ParamKeys extends string>(): KeyedMap<ParamKeys, string> => useRoute().params as KeyedMap<ParamKeys, string>;
+export const useRouteQuery = <QueryKeys extends string>(): KeyedMap<QueryKeys, string> => useRoute().query as KeyedMap<QueryKeys, string>;
+
+export const splitUrl = (url: string): UrlState =>
 {
 	const [path, q = ""] = url.split("?")
 	const [query = "", hash = ""] = q.split("#");
 
 	return { path, query, hash, url };
+}
+
+export const useRouteChange = (routeChangeListener: OnRouteChangeListener) =>
+{
+	const { addChangeListener, removeChangeListener } = useRouter();
+
+	React.useEffect(() => 
+	{
+		addChangeListener(routeChangeListener);
+		return () => 
+		{
+			removeChangeListener(routeChangeListener);
+		};
+	}, []);
 }
 
 const resetActiveToken = (activeToken: React.MutableRefObject<CancelToken<string> | null>, url: string) => 
@@ -74,14 +93,17 @@ const callListeners = async (listeners: React.MutableRefObject<OnRouteChangeList
 	}
 }
 
-export const Router = ({ children, url, onRedirect, resolve }: React.PropsWithChildren<RouterProps>) =>
+
+export const Router = ({ children, url, onRedirect, resolve, title, onTitleChange = () => { } }: React.PropsWithChildren<RouterProps>) =>
 {
-	const [state, setState] = React.useState<RouterState>(splitUrl(url));
+	const [state, setState] = React.useState<RouterState>(() => ({ ...splitUrl(url), title }));
 
 	const activeToken = React.useRef<CancelToken<string> | null>(null);
 	const changeListeners = React.useRef<OnRouteChangeListener[]>([]);
 
-	// const { isResolving } = IonAppContext.use();
+	const setStateRef = React.useRef(setState);
+
+	const { isResolving, isHydrating } = IonAppContext.use();
 
 	const ctx: RouterContextType = {
 		...state,
@@ -139,7 +161,7 @@ export const Router = ({ children, url, onRedirect, resolve }: React.PropsWithCh
 				if (!token.isCanceled && (newUrl !== state.url))
 				{
 					info.isLoading = false;
-					setState(splitUrl(newUrl));
+					setState({ ...splitUrl(newUrl), title: state.title });
 					await callListeners(changeListeners, info, false);
 				}
 				else
@@ -161,13 +183,12 @@ export const Router = ({ children, url, onRedirect, resolve }: React.PropsWithCh
 
 			if (exact && (tp.length !== p.length))
 				return false;
-			else if ((!exact) && (tp.length < p.length))
-				return false;
 
 			for (let i = 0; i < p.length; i++)
 			{
 				const s = p[i];
 				const ts = tp[i];
+
 				if (s.startsWith(":"))
 					params[s.substring(1, s.length)] = ts;
 				else if (s !== ts)
@@ -179,17 +200,25 @@ export const Router = ({ children, url, onRedirect, resolve }: React.PropsWithCh
 		redirect: onRedirect,
 		addChangeListener: addChangeListener(changeListeners),
 		removeChangeListener: removeChangeListener(changeListeners),
-		useRouteChange: (listener) =>
+		useRouteChange,
+		setTitle: (...titleParts: string[]) =>
 		{
-			const { addChangeListener, removeChangeListener } = useRouterContext();
-
-			React.useEffect(() => 
+			const t = title ? `${titleParts.join(" - ")} - ${title}` : titleParts.join(" - ");
+			onTitleChange(t);
+			if (!isResolving && !isHydrating && env.isClient)
 			{
-				addChangeListener(listener);
-				return () => removeChangeListener(listener);
-			}, []);
+				document.title = t;
+				console.log("update state", t);
+				setStateRef.current({ ...state, title: t });
+			}
+			return t;
 		}
-	}
+	};
+
+	React.useEffect(() => 
+	{
+		setStateRef.current = setState;
+	}, []);
 
 	return (
 		<RouterContext.Provider value={ctx}>
@@ -198,31 +227,47 @@ export const Router = ({ children, url, onRedirect, resolve }: React.PropsWithCh
 	);
 }
 
-export const Route = ({ path, exact, component, children }: React.PropsWithChildren<RouteProps>) =>
+export const Route = ({ path, exact, component, children, title }: React.PropsWithChildren<RouteProps>) =>
 {
-	const { match, ...ctx } = useRouterContext();
+	const { match, ...ctx } = useRouter();
 
+	
 	let params: ObjectMap<string> = {};
-
-	if (!match(path, exact, params))
-		return null;
-
-	if (component)
-		return React.createElement(component, { children });
+	
+	const matched = match(path, exact, params);
 
 	const routeContext: RouteContextType = {
 		path: ctx.path,
 		hash: ctx.hash,
 		query: object.deserialize(ctx.query),
 		params,
+		setTitle: ctx.setTitle
 	};
 
-	return <RouteContext.Provider value={routeContext}>{children}</RouteContext.Provider>;
+	const setTitle = () =>
+	{
+		if (matched && title)
+		{
+			const toArr = (a: string | string[]) => Array.isArray(a) ? a : [a];
+			const titleParts = typeof title === "function" ? toArr(title(params)) : toArr(title);
+			ctx.setTitle(...titleParts);
+		}
+	}
+
+	if (env.isServer)
+		setTitle();
+
+	React.useEffect(() => setTitle(), []);
+
+	if (!matched)
+		return null;
+
+	return <RouteContext.Provider value={routeContext}>{component ? React.createElement(component, { children }) : children}</RouteContext.Provider>;
 }
 
 export const Redirect = ({ from, exact, to }: RedirectProps) =>
 {
-	const { match, redirect } = useRouterContext();
+	const { match, redirect } = useRouter();
 
 	if (match(from, exact))
 		redirect(to);
@@ -232,7 +277,7 @@ export const Redirect = ({ from, exact, to }: RedirectProps) =>
 
 export const Link = ({ to, children, exact, text, className, activeClass = "active", onClick }: React.PropsWithChildren<LinkProps>) =>
 {
-	const { match, routeTo } = useRouterContext();
+	const { match, routeTo } = useRouter();
 
 	const handleClick = (e: React.MouseEvent<HTMLAnchorElement>) =>
 	{
@@ -251,14 +296,20 @@ export const Link = ({ to, children, exact, text, className, activeClass = "acti
 }
 
 type RouterProps = {
+	title: string;
 	url: string;
 	onRedirect: (to: string) => any;
+	onTitleChange?: (title: string) => any;
 	resolve: OnRouteResolveCallback;
 };
 
 export type OnRouteResolveCallback = (startUrl: string, url: string, cancelToken: CancelToken<string>, onResolving: () => Promise<void>) => Promise<string>;
 
-type RouterState = {
+type RouterState = UrlState & {
+	title: string;
+};
+
+type UrlState = {
 	url: string;
 	path: string;
 	query: string;
@@ -269,6 +320,7 @@ type RouteProps = {
 	exact?: boolean;
 	path: string;
 	component?: React.FC<any>;
+	title?: string | string[] | ((params: ObjectMap<string>) => string | string[]);
 };
 
 type RedirectProps = {
@@ -293,6 +345,7 @@ type RouterContextType = RouterState & {
 	addChangeListener: (listener: OnRouteChangeListener) => void;
 	removeChangeListener: (listener: OnRouteChangeListener) => void;
 	useRouteChange: (listener: OnRouteChangeListener) => void;
+	setTitle: (...titleParts: string[]) => string;
 };
 
 export type RedirectCallback = (to: string) => boolean;
@@ -302,6 +355,7 @@ export type RouteContextType = {
 	readonly query: Readonly<ObjectMap<string>>;
 	readonly hash: string;
 	readonly params: Readonly<ObjectMap<string>>;
+	readonly setTitle: (...titleParts: string[]) => string;
 };
 
 type OnRouteChangeListener = (event: ChangeEventInfo) => any;

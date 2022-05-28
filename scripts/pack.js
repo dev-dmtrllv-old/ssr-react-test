@@ -2,11 +2,15 @@ const { run } = require("./run");
 const fs = require("fs");
 const path = require("path");
 
+const pkg = require("../package.json")
+
+const tgzName = `${pkg.name}-${pkg.version}.tgz`;
+
 const ignore = [
+	tgzName,
 	"cli",
 	"scripts",
 	"src",
-	"ion-1.0.0.tgz",
 	"node_modules",
 	".git",
 	".gitignore",
@@ -51,8 +55,8 @@ const watch = () =>
 
 const packAndStart = () =>
 {
-	if (fs.existsSync(path.resolve(__dirname, "../ion-1.0.0.tgz")))
-		fs.unlinkSync(path.resolve(__dirname, "../ion-1.0.0.tgz"));
+	if (fs.existsSync(path.resolve(__dirname, "..", tgzName)))
+		fs.unlinkSync(path.resolve(__dirname, "..", tgzName));
 	pack();
 	watch();
 }

@@ -5,7 +5,7 @@ import nodeExternals from "webpack-node-externals";
 import ManifestPlugin from "./ManifestPlugin";
 
 import path from "path";
-import { readdirSync, rmSync, unlinkSync, writeFileSync } from "fs";
+import { mkdirSync, readdirSync, rmSync, unlinkSync, writeFileSync } from "fs";
 import MiniCssExtractPlugin from "mini-css-extract-plugin";
 
 export class Compiler
@@ -70,7 +70,11 @@ export class Compiler
 					mode: "write-references"
 				}
 			}),
-			new ManifestPlugin(basePath, (manifest) => writeFileSync(path.resolve(outPath, "manifest.json"), JSON.stringify(manifest), "utf-8")),
+			new ManifestPlugin(basePath, (manifest) => 
+			{
+				mkdirSync(outPath, { recursive: true });
+				writeFileSync(path.resolve(outPath, "manifest.json"), JSON.stringify(manifest), "utf-8");
+			}),
 		];
 
 		config.entry = entries;

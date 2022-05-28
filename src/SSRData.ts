@@ -5,6 +5,10 @@ export type SSRData = {
 	async: Async.ContextType["resolvedDataStack"];
 	api: ApiManifest;
 	renderError?: Error;
+	apps: {
+		[url: string]: string[];
+	};
+	title: string;
 };
 
 export const getSSRData = () =>
