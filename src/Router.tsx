@@ -105,73 +105,91 @@ export const Router = ({ children, url, onRedirect, resolve, title, onTitleChang
 
 	const { isResolving, isHydrating } = IonAppContext.use();
 
-	const ctx: RouterContextType = {
-		...state,
-		routeTo: async (url) =>
+	const routeToHandler = async (url, fromHistory = false) =>
+	{
+		if (env.isServer)
 		{
-			if (env.isServer)
+			onRedirect(url);
+			return false;
+		}
+		else
+		{
+			if (state.url === url)
 			{
-				onRedirect(url);
+				const to = activeToken.current?.data || url;
+				cancelActiveToken(activeToken);
+
+				await callListeners(changeListeners, {
+					cancel: () => { },
+					isCanceled: true,
+					from: state.url,
+					to,
+					isLoading: false
+				}, false);
+
+				return;
+			}
+			else if (getTokenUrl(activeToken) && (url === getTokenUrl(activeToken)))
+			{
+				return;
+			}
+
+			const info: ChangeEventInfo = {
+				cancel: () => { },
+				isCanceled: false,
+				from: state.url,
+				to: url,
+				isLoading: true
+			};
+
+			const token = resetActiveToken(activeToken, url);
+
+			const newUrl = await resolve(state.path, url, token, async () =>
+			{
+				await callListeners(changeListeners, info, true);
+
+				if (token.isCanceled)
+				{
+					info.isLoading = activeToken.current !== null;
+					info.isCanceled = true;
+					await callListeners(changeListeners, info, false);
+					return;
+				}
+			});
+
+			if (!token.isCanceled && (newUrl !== state.url))
+			{
+				info.isLoading = false;
+				if (!fromHistory)
+				{
+					console.log("replace history state");
+					window.history.pushState(null, "", state.url);
+					window.history.replaceState(null, "", newUrl);
+				}
+				setState({ ...splitUrl(newUrl), title: state.title });
+				await callListeners(changeListeners, info, false);
+				return true;
 			}
 			else
 			{
-				if (state.url === url)
-				{
-					const to = activeToken.current?.data || url;
-					cancelActiveToken(activeToken);
-
-					await callListeners(changeListeners, {
-						cancel: () => { },
-						isCanceled: true,
-						from: state.url,
-						to,
-						isLoading: false
-					}, false);
-
-					return;
-				}
-				else if (getTokenUrl(activeToken) && (url === getTokenUrl(activeToken)))
-				{
-					return;
-				}
-
-				const info: ChangeEventInfo = {
-					cancel: () => { },
-					isCanceled: false,
-					from: state.url,
-					to: url,
-					isLoading: true
-				};
-
-				const token = resetActiveToken(activeToken, url);
-
-				const newUrl = await resolve(state.path, url, token, async () =>
-				{
-					await callListeners(changeListeners, info, true);
-
-					if (token.isCanceled)
-					{
-						info.isLoading = activeToken.current !== null;
-						info.isCanceled = true;
-						await callListeners(changeListeners, info, false);
-						return;
-					}
-				});
-
-				if (!token.isCanceled && (newUrl !== state.url))
-				{
-					info.isLoading = false;
-					setState({ ...splitUrl(newUrl), title: state.title });
-					await callListeners(changeListeners, info, false);
-				}
-				else
-				{
-					info.isLoading = activeToken.current !== null;
-					info.isCanceled = token.isCanceled;
-					await callListeners(changeListeners, info, false);
-				}
+				info.isLoading = activeToken.current !== null;
+				info.isCanceled = token.isCanceled;
+				await callListeners(changeListeners, info, false);
 			}
-		},
+		}
+	}
+
+	const onPopState = async (e: PopStateEvent) =>
+	{
+		e.preventDefault();
+		e.stopPropagation();
+
+		await routeToHandler(window.location.pathname + window.location.search + window.location.hash, true);
+	}
+
+	const ctx: RouterContextType = {
+		...state,
+		routeTo: routeToHandler,
 		/* TODO: if there are params in the url and not exact, allow matching shorter urls!  */
 		match(url: string, exact?: boolean, params: ObjectMap<string> = {})
 		{
@@ -205,6 +223,7 @@ export const Router = ({ children, url, onRedirect, resolve, title, onTitleChang
 		{
 			const t = title ? `${titleParts.join(" - ")} - ${title}` : titleParts.join(" - ");
 			onTitleChange(t);
+			console.log(isResolving, isHydrating, env.isClient);
 			if (!isResolving && !isHydrating && env.isClient)
 			{
 				document.title = t;
@@ -218,6 +237,11 @@ export const Router = ({ children, url, onRedirect, resolve, title, onTitleChang
 	React.useEffect(() => 
 	{
 		setStateRef.current = setState;
+		window.addEventListener("popstate", onPopState);
+		return () =>
+		{
+			window.removeEventListener("popstate", onPopState);
+		}
 	}, []);
 
 	return (
@@ -231,10 +255,7 @@ export const Route = ({ path, exact, component, children, title }: React.PropsWi
 {
 	const { match, ...ctx } = useRouter();
 
-	
 	let params: ObjectMap<string> = {};
-	
-	const matched = match(path, exact, params);
 
 	const routeContext: RouteContextType = {
 		path: ctx.path,
@@ -246,7 +267,7 @@ export const Route = ({ path, exact, component, children, title }: React.PropsWi
 
 	const setTitle = () =>
 	{
-		if (matched && title)
+		if (match(path, exact, params) && title)
 		{
 			const toArr = (a: string | string[]) => Array.isArray(a) ? a : [a];
 			const titleParts = typeof title === "function" ? toArr(title(params)) : toArr(title);
@@ -257,9 +278,9 @@ export const Route = ({ path, exact, component, children, title }: React.PropsWi
 	if (env.isServer)
 		setTitle();
 
-	React.useEffect(() => setTitle(), []);
+	React.useEffect(() => setTitle(), [ctx.url]);
 
-	if (!matched)
+	if (!match(path, exact, params))
 		return null;
 
 	return <RouteContext.Provider value={routeContext}>{component ? React.createElement(component, { children }) : children}</RouteContext.Provider>;
