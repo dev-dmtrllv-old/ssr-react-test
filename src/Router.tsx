@@ -162,7 +162,6 @@ export const Router = ({ children, url, onRedirect, resolve, title, onTitleChang
 				info.isLoading = false;
 				if (!fromHistory)
 				{
-					console.log("replace history state");
 					window.history.pushState(null, "", state.url);
 					window.history.replaceState(null, "", newUrl);
 				}
@@ -221,9 +220,9 @@ export const Router = ({ children, url, onRedirect, resolve, title, onTitleChang
 		useRouteChange,
 		setTitle: (...titleParts: string[]) =>
 		{
-			const t = title ? `${titleParts.join(" - ")} - ${title}` : titleParts.join(" - ");
+			
+			const t = [...titleParts, title].filter(s => !!s).join(" - ");
 			onTitleChange(t);
-			console.log(isResolving, isHydrating, env.isClient);
 			if (!isResolving && !isHydrating && env.isClient)
 			{
 				document.title = t;
