@@ -429,7 +429,9 @@ export namespace Async
 		onCanceled?: React.FC<{ reason?: string }>;
 	};
 
-	export const createDynamic = <M extends {}, P extends {}, K extends keyof A, A = Awaited<M>>(importer: Async.Resolver<P, M>, key: K) => Async.create<P & DynamicProps & (A[K] extends (props: infer P) => any ? P : {}), M>(importer, ({ abort, canceled, isInvalidated, isLoading, data, error, ...props }) => 
+	type InferModule<T> = T extends () => Promise<infer Module> ? Module : never;
+
+	export const createDynamic = <Resolver extends () => Promise<any>, K extends keyof M, M = InferModule<Resolver>, C = M[K]>(importer: Resolver, key: K) => Async.create<DynamicProps & C extends (props: infer P) => any ? P extends {} ? P : {} : {}, M[K]>(importer as any, ({ abort, canceled, isInvalidated, isLoading, data, error, ...props }) => 
 	{
 		if (data)
 		{
