@@ -9,6 +9,7 @@ import { RedirectCallback } from "./Router";
 import type { ApiImplementation, ApiManifest, ApiScheme } from "./server";
 import type { Manifest } from "./server/Manifest";
 import SSRData, { getSSRData } from "./SSRData";
+import { Static } from "./Static";
 import { CancelToken } from "./utils";
 import { cloneError } from "./utils/object";
 
@@ -51,25 +52,25 @@ export namespace IonApp
 			this.context = IonAppContext.create(env.isClient ? clientFetcher : async () => { }, false);
 		}
 
-		public wrap(title: string, url: string, onRedirect: RedirectCallback, onTitleChange: (title: string) => any = () => {}, context: IonAppContext.Type = this.context)
+		public wrap(title: string, url: string, onRedirect: RedirectCallback, onTitleChange: (title: string) => any = () => { }, context: IonAppContext.Type = this.context, component: React.FC<any> = this.fc, props: any = {})
 		{
 			return (
 				<IonAppContext.Provider context={context} onRedirect={onRedirect} onResolveRoute={this.resolveRoute(title, clientFetcher)} title={title} url={url} onTitleChange={onTitleChange}>
-					{React.createElement(this.fc)}
+					{React.createElement(component, props)}
 				</IonAppContext.Provider>
 			);
 		}
 
-		public async resolve(title: string, url: string, onRedirect: RedirectCallback, fetcher: Fetcher, hydrate: boolean = false, ctx: Async.ContextType = this.context.async): Promise<ResolveData>
+		public async resolve(title: string, url: string, onRedirect: RedirectCallback, fetcher: Fetcher, hydrate: boolean = false, ctx: Async.ContextType = this.context.async, component: React.FC<any> = this.fc, props: any = {}): Promise<ResolveData>
 		{
 			let resolvedTitle = title;
 
 			let context = IonAppContext.create(fetcher, !hydrate, hydrate, ctx);
 
-			ReactDOMServer.renderToStaticMarkup(this.wrap(title, url, onRedirect, (t) => resolvedTitle = t, context));
+			ReactDOMServer.renderToStaticMarkup(this.wrap(title, url, onRedirect, (t) => resolvedTitle = t, context, component, props));
 
 			let newData = await Async.resolveComponents(context.async);
-
+			// console.log(newData);
 			while (Object.keys(newData).length > 0)
 			{
 				ctx.data = { ...ctx.data, ...newData };
@@ -78,7 +79,7 @@ export namespace IonApp
 					ctx.cache = context.async.cache;
 
 				context = IonAppContext.create(fetcher, !hydrate, hydrate, ctx);
-				ReactDOMServer.renderToStaticMarkup(this.wrap(title, url, onRedirect, (t) => resolvedTitle = t, context));
+				ReactDOMServer.renderToStaticMarkup(this.wrap(title, url, onRedirect, (t) => resolvedTitle = t, context, component, props));
 
 				newData = await Async.resolveComponents(context.async);
 			}
@@ -87,43 +88,73 @@ export namespace IonApp
 				this.context.async.cache = context.async.cache;
 
 			return {
-				title: resolvedTitle
+				title: resolvedTitle,
+				staticComponents: context.staticContext.components
 			}
 		}
+
+		protected async renderAppString(title: string, url: string, onRedirect: RedirectCallback, fetcher: IonApp.Fetcher, component: React.FC<any> = this.fc, props: any = {}): Promise<{ appString: string, title: string, dynamicPaths: string[] } | false>
+		{
+			let continueRender = true;
+
+			const onRedirectWrapper = (to: string) =>
+			{
+				continueRender = onRedirect(to);
+				return continueRender;
+			}
+
+			const resolvedData = await this.resolve(title, url, onRedirectWrapper, fetcher, false, this.context.async, component, props);
+
+			this.context.staticContext.components = resolvedData.staticComponents;
+			// console.log(this.context.staticContext);
+			if (!continueRender)
+				return false;
+			
+			const resolveStaticComponent = async <P extends {}>(component: React.FC<P>, props: P) =>
+			{
+				const result = await this.renderAppString(title, url, onRedirect, fetcher, component, props);
+				// console.log(result);
+				if (result)
+					return result.appString;
+				return "";
+			}
+			// Async.resolveComponents
+			const dynamicPaths = Async.getDynamicPaths(this.context.async);
+			
+			const staticRenders = await Static.resolveComponents(this.context.staticContext, resolveStaticComponent);
+			
+			let updatedTitle = title;
+
+			const appString = Static.injectStaticComponents(ReactDOMServer.renderToString(this.wrap(title, url, onRedirect, (t) => updatedTitle = t, this.context, component, props)), staticRenders);
+
+			return { appString, title: resolvedData.title, dynamicPaths };
+		}
+
 
 		protected async renderToString(title: string, url: string, onRedirect: RedirectCallback, appName: string, manifest: Manifest, fetcher: Fetcher, apiManifest: ApiManifest, apps: SSRData["apps"])
 		{
 			try
 			{
-				let continueRender = true;
+				const renderResult = await this.renderAppString(title, url, onRedirect, fetcher);
 
-				const onRedirectWrapper = (to: string) =>
+				if (renderResult)
 				{
-					continueRender = onRedirect(to);
-					return continueRender;
+					const { appString, dynamicPaths, title } = renderResult;
+					renderResult.appString;
+
+					return ReactDOMServer.renderToStaticMarkup(React.createElement(this.options.html, {
+						title,
+						appString,
+						scripts: manifest.get(appName, dynamicPaths, "js"),
+						styles: manifest.get(appName, dynamicPaths, "css"),
+						ssrData: {
+							async: this.context.async.resolvedDataStack,
+							api: apiManifest,
+							apps,
+							title
+						}
+					}));
 				}
-
-				const resolvedData = await this.resolve(title, url, onRedirectWrapper, fetcher, false);
-				
-				if(!continueRender)
-					return;
-
-				const paths = Async.getDynamicPaths(this.context.async);
-
-				const appString = ReactDOMServer.renderToString(this.wrap(title, url, onRedirect));
-
-				return ReactDOMServer.renderToStaticMarkup(React.createElement(this.options.html, {
-					title: resolvedData.title,
-					appString,
-					scripts: manifest.get(appName, paths, "js"),
-					styles: manifest.get(appName, paths, "css"),
-					ssrData: {
-						async: this.context.async.resolvedDataStack,
-						api: apiManifest,
-						apps,
-						title
-					}
-				}));
 			}
 			catch (e)
 			{
@@ -132,7 +163,6 @@ export namespace IonApp
 					error: cloneError(e)
 				}));
 			}
-
 		}
 
 		public async render(title: string, url: string, onRedirect: RedirectCallback, appName: string, manifest: Manifest, fetcher: Fetcher, apiManifest: ApiManifest, apps: SSRData["apps"])
@@ -201,6 +231,8 @@ export namespace IonApp
 
 			const ssrData = getSSRData();
 
+			console.log(ssrData);
+
 			Client.updateApi(ssrData.api);
 
 			this.context.async.resolvedDataStack = ssrData.async;
@@ -236,5 +268,6 @@ export namespace IonApp
 
 	type ResolveData = {
 		title: string;
+		staticComponents: Static.ContextType["components"];
 	};
 }

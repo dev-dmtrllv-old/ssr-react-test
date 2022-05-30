@@ -2,6 +2,7 @@ import React from "react";
 import { Async } from "./Async";
 import type { IonApp } from "./IonApp";
 import { OnRouteResolveCallback, Router } from "./Router";
+import { Static } from "./Static";
 
 export namespace IonAppContext
 {
@@ -19,6 +20,9 @@ export namespace IonAppContext
 				isMounted: false,
 				cache: {},
 				abortControllers: {}
+			},
+			staticContext: {
+				components: {}
 			}
 		};
 	}
@@ -27,14 +31,16 @@ export namespace IonAppContext
 
 	export const Provider = ({ context, onRedirect, onResolveRoute, url, children, title = "" }: React.PropsWithChildren<AppContextProps>) =>
 	{
-		const { isResolving, async, isHydrating } = context;
+		const { isResolving, async, isHydrating, staticContext } = context;
 		return (
 			<Context.Provider value={{ isResolving, isHydrating }}>
-				<Async.Provider context={async}>
-					<Router onRedirect={onRedirect} resolve={onResolveRoute} url={url} title={title}>
-						{children}
-					</Router>
-				</Async.Provider>
+				<Static.Provider context={staticContext}>
+					<Async.Provider context={async}>
+						<Router onRedirect={onRedirect} resolve={onResolveRoute} url={url} title={title}>
+							{children}
+						</Router>
+					</Async.Provider>
+				</Static.Provider>
 			</Context.Provider>
 		);
 	}
@@ -48,6 +54,7 @@ export namespace IonAppContext
 
 	export type Type = RenderType & {
 		async: Async.ContextType;
+		staticContext: Static.ContextType;
 	}
 
 	type AppContextProps = {

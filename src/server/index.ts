@@ -1,17 +1,4 @@
-if (module === undefined)
-{
-	window.env = {
-		isClient: true,
-		isServer: false
-	};
-}
-else
-{
-	(global as any).env = {
-		isClient: false,
-		isServer: true
-	};
-}
+import "../env";
 
 export * from "./Server";
 export * from "./Api";

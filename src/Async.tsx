@@ -5,6 +5,7 @@ import { object } from "./utils";
 import { cloneError } from "./utils/object";
 import { hash } from "./utils/string";
 import type { IonApp } from "./IonApp";
+import { Static } from "./Static";
 
 export namespace Async
 {
@@ -253,6 +254,8 @@ export namespace Async
 		{
 			prefetch = prefetch === undefined ? defaultAsyncProps.prefetch : prefetch;
 
+			const dynamicContext = Static.useAutoDynamicContext();
+
 			const ctx = useContext();
 			const { isResolving, isHydrating } = IonAppContext.use();
 
@@ -399,6 +402,9 @@ export namespace Async
 					abortController.current.abort(reason);
 				}
 			}
+
+			if(dynamicContext)
+				return dynamicContext.dynamic(component, { ...props as any, ...state, abort });
 
 			return React.createElement(component, { ...props as any, ...state, abort });
 		}) as unknown as AsyncComponent<Props, Data>;
