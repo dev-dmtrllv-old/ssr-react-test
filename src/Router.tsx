@@ -1,4 +1,5 @@
 import React from "react";
+import { Context } from "./Context";
 import { Renderer } from "./Renderer";
 
 import { CancelToken, object } from "./utils";
@@ -19,7 +20,7 @@ const RouterContext = React.createContext<RouterContextType>({
 	setTitle: (title) => title
 });
 
-const RouteContext = React.createContext<RouteContextType>({
+const RouteContext = Context.create<RouteContextType>({
 	hash: "",
 	params: {},
 	path: "",
@@ -29,7 +30,7 @@ const RouteContext = React.createContext<RouteContextType>({
 
 export const useRouter = (): Readonly<RouterContextType> => React.useContext(RouterContext);
 
-export const useRoute = () => React.useContext(RouteContext);
+export const useRoute = () => RouteContext.use();
 
 export const splitUrl = (url: string): UrlState =>
 {
@@ -99,7 +100,6 @@ export const Router = ({ children, url, onRedirect, resolve, title, onTitleChang
 	const activeToken = React.useRef<CancelToken<string> | null>(null);
 	const changeListeners = React.useRef<OnRouteChangeListener[]>([]);
 
-	// const stateRef = React.useRef(setState);
 	const setStateRef = React.useRef(setState);
 
 	const renderContext = Renderer.useContext();
