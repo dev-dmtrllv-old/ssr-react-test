@@ -77,11 +77,11 @@ export namespace Static
 		return renderResult;
 	}
 
-	export const create = <P extends {}>(fc: React.FC<P & StaticProps>): FC<P> =>
+	export const create = <P extends {}>(fc: React.FC<P>): FC<P> =>
 	{
 		const componentID = hash(fc.toString());
 
-		return ({ ...props }: P & StaticProps) => 
+		return ({ ...props }: P) => 
 		{
 			const { staticContext } = Renderer.useContext();
 
@@ -95,7 +95,7 @@ export namespace Static
 				return id as any;
 			}
 
-			return React.createElement(fc, { ...props });
+			return React.createElement(fc, props);
 		};
 	}
 
@@ -117,10 +117,6 @@ export namespace Static
 	type FC<P> = React.FC<P & StaticComponentProps>;
 
 	type DynamicWrapper = <P extends {}>(component: React.FC<P>, props?: P, id?: string) => React.FunctionComponentElement<any> | string;
-
-	type StaticProps = {
-		dynamic: DynamicWrapper;
-	};
 
 	type Renders = {
 		[key: string]: RenderInfo;

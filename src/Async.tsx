@@ -8,6 +8,11 @@ import { Static } from "./Static";
 
 export namespace Async
 {
+	const defaultProps: Required<FCProps> = {
+		cache: Infinity,
+		prefetch: true,
+	};
+
 	const resolve = async (resolver: Resolver<any, any>, props: any): Promise<Data<any>> =>
 	{
 		try
@@ -27,6 +32,8 @@ export namespace Async
 		}
 	}
 
+	export const flushRenderStack = async (context: ContextType, renderStack: RenderStack) => context.renderStack = renderStack;
+
 	export const resolveComponents = async (context: ContextType, onResolved: (component: React.FC<any>, props: any, context: Map<Context<any>, any>) => any) =>
 	{
 		const resolvers = object.moveAndReplace(context, "resolvers", {});
@@ -37,28 +44,27 @@ export namespace Async
 
 			context.data[id] = data;
 
-			console.group("resolved async");
 			for (const { component, contexts } of components)
 			{
 				await onResolved(component, { ...props, ...data }, contexts);
 			}
-			console.groupEnd();
 		}
 	}
 
-	const getData = (context: RenderContext, id: string) => 
+	const getData = (context: RenderContext, id: string, isPrefetchComponent: boolean = false) => 
 	{
-		let data = context.async.data[id];
+		let data: Data<any> | undefined = context.async.data[id];
 
 		if (data)
 			return data;
 
-		if (Renderer.isHydrating(context))
+		if (Renderer.isHydrating(context) && isPrefetchComponent)
 		{
 			data = context.async.renderStack[context.async.hydrateIndex++];
 			context.async.data[id] = data;
+			console.log(data);
 		}
-		
+
 		return data;
 	};
 
@@ -86,13 +92,15 @@ export namespace Async
 		return data;
 	}
 
-	export const create = <Props extends {}, D>(resolver: Resolver<Props, D>, fc: React.FC<Props & Data<D>>): FC<Props> =>
+	export const create = <Props extends {}, D>(resolver: Resolver<Props, D>, fc: React.FC<Props & Data<D>>, defaultAsyncProps: Required<FCProps> = defaultProps): FC<Props> =>
 	{
 		const c = ((props: Props & FCProps) => 
 		{
-			const { cache, prefetch, ...rest } = props;
+			const { cache, prefetch, ...rest } = { ...defaultAsyncProps, ...props };
 
-			const fcProps = rest as Props;
+			const fcProps = rest as any as Props;
+
+			const propsSignature = React.useMemo(() => hash(JSON.stringify(fcProps)), [props]);
 
 			const id = React.useMemo(() => `${c.id}.${hash(JSON.stringify(props))}`, [props]);
 
@@ -100,12 +108,12 @@ export namespace Async
 
 			const [state, setState] = React.useState<Data>(() => 
 			{
-				let data = getData(renderContext, id);
+				let data = getData(renderContext, id, prefetch);
 
 				if (data)
 					return data;
 
-				if (Renderer.isResolving(renderContext))
+				if (Renderer.isResolving(renderContext) && prefetch)
 					return addAsyncResolver(renderContext, id, fc, fcProps, resolver);
 
 				return {
@@ -116,9 +124,31 @@ export namespace Async
 			if (env.isServer && !Renderer.isResolving(renderContext))
 				renderContext.async.renderStack.push(state);
 
-			if(Renderer.isStaticRender(renderContext))
+			React.useEffect(() => 
+			{
+				const newSignature = hash(JSON.stringify(fcProps));
+				if (newSignature != propsSignature)
+				{
+
+				}
+				else
+				{
+					let data = getData(renderContext, id, prefetch);
+					
+					if(!data)
+					{
+						console.log("resolve async data");
+					}
+				}
+				return () =>
+				{
+
+				}
+			}, [fcProps]);
+
+			if (Renderer.isStaticRender(renderContext))
 				return Static.renderAsDynamicComponent(c, props, id);
-			
+
 			return React.createElement(fc, { ...fcProps, ...state });
 		}) as FC<Props>;
 

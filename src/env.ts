@@ -11,6 +11,6 @@ else
 {
 	(global as any).env = {
 		isClient: false,
-		isServer: true
+		isServer: true,
 	};
 }

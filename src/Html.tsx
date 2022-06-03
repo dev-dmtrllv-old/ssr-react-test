@@ -65,6 +65,6 @@ export type HtmlProps = {
 	ssrData: SSRData;
 } & Omit<HtmlBaseProps, "children">;
 
-export type HtmlErrorProps<P> = P & {
+export type HtmlErrorProps<P extends {} = {}> = P & {
 	error: Error;
 } & Omit<HtmlBaseProps, "children">;

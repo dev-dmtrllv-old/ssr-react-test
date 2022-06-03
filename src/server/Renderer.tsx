@@ -6,16 +6,19 @@ import type { Server } from "./Server";
 import nodeFetch from "node-fetch";
 import { Session } from "./ApiSession";
 import { object } from "../utils";
+import ReactDOMServer from "react-dom/server";
+import React from "react";
+import { HtmlProps } from "../Html";
 
 export class Renderer
 {
 	protected readonly server: Server;
-	protected readonly component: any;
+	protected readonly component: IonApp;
 	protected readonly req: Request;
 	protected readonly res: Response<any, Record<string, any>>;
 	public readonly session: Session;
 
-	constructor(server: Server, component: any, req: Request, res: Response)
+	constructor(server: Server, component: IonApp, req: Request, res: Response)
 	{
 		this.server = server;
 		this.component = component;
@@ -72,23 +75,42 @@ export class Renderer
 		}
 	}
 
-	public async render(appName: string, title: string, manifest: Manifest)
+	public async render(appName: string, title: string)
 	{
 		try
 		{
-			let redirectURL = this.req.url;
-
 			const onRedirect = (url: string) =>
 			{
-				redirectURL = url;
 				this.res.redirect(url);
 				return false;
 			}
 
-			const response = await this.component.renderServer();
+			const renderResult = await this.component.renderServer(this.req.url, title, onRedirect);
 
-			this.res.send(response);
-			
+			if (renderResult.didRedirect)
+				return;
+
+			const { Html, appString, asyncStack } = renderResult;
+
+			console.log(renderResult.title);
+
+			const props: HtmlProps = {
+				appString,
+				ssrData: {
+					async: asyncStack,
+					api: this.server.apiManifest,
+					apps: this.server.appsSSRData,
+					title: title,
+				},
+				styles: this.server.manifest.get(appName, [], "css"),
+				scripts: this.server.manifest.get(appName, [], "js"),
+				title: renderResult.title
+			};
+
+			const html = ReactDOMServer.renderToStaticMarkup(React.createElement(Html, props));
+
+			this.res.send("<!DOCTYPE html>" + html);
+
 			return true;
 		}
 		catch (e)

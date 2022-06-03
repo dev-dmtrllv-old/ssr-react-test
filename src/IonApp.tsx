@@ -1,10 +1,12 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import ReactDOMServer from "react-dom/server";
+import { Async } from "./Async";
 // import { Async } from "./Async";
 import { Client } from "./Client";
 import { ErrorHtml, Html, HtmlErrorProps, HtmlProps } from "./Html";
-import { Renderer } from "./Renderer";
+import { Renderer, RenderResult } from "./Renderer";
+import { RedirectCallback } from "./Router";
 // import { RedirectCallback } from "./Router";
 import type { ApiImplementation, ApiManifest, ApiScheme } from "./server";
 import type { Manifest } from "./server/Manifest";
@@ -15,8 +17,9 @@ import { cloneError } from "./utils/object";
 
 export class IonApp
 {
-	private static defaultConfig: Required<AppConfig> = {
-
+	private static defaultConfig: Readonly<Required<AppConfig>> = {
+		ErrorHtml: ErrorHtml,
+		Html: Html
 	};
 
 	public static readonly create = (fc: React.FC<any>, config?: AppConfig): IonApp =>
@@ -28,13 +31,13 @@ export class IonApp
 	}
 
 	private readonly fc: React.FC<any>;
-	public readonly appConfig: Readonly<AppConfig>;
+	public readonly appConfig: Readonly<Required<AppConfig>>;
 	private readonly renderer: Renderer;
 
 	protected constructor(fc: React.FC<any>, appConfig: AppConfig)
 	{
 		this.fc = fc;
-		this.appConfig = appConfig;
+		this.appConfig = { ...IonApp.defaultConfig, ...appConfig };
 		this.renderer = new Renderer(fc, {});
 	}
 
@@ -52,16 +55,29 @@ export class IonApp
 		return this.renderer.hydrate(rootEl);
 	}
 
-	public readonly renderServer = async () =>
+	public readonly renderServer = async (url: string, title: string, onRedirect: RedirectCallback): Promise<ServerRenderResult> =>
 	{
 		const app = new IonApp(this.fc, this.appConfig);
 
-		const appString = await app.renderer.render();
+		const renderResult = await app.renderer.render(url, title, onRedirect, );
 
-		return appString;
+		if(renderResult.didRedirect)
+			return { didRedirect: true };
+
+		return { ...this.appConfig, ...renderResult, didRedirect: false };
 	}
 }
 
-export type AppConfig = {
+type ServerRenderResult = (Readonly<Required<AppConfig>> & {
+	appString: string,
+	asyncStack: Async.ContextType["renderStack"];
+	title: string;
+	didRedirect: false;
+}) | {
+	didRedirect: true;
+} ;
 
+export type AppConfig = {
+	Html?: React.FC<HtmlProps>;
+	ErrorHtml?: React.FC<HtmlErrorProps>;
 };
