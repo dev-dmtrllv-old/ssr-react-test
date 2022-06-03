@@ -43,7 +43,7 @@ export class AppConfig
 				else
 				{
 					apps[name] = appModule[appExportName].default;
-					apps[name].updateApiForServer(this.serverApiPath, apiImplementation);
+					// apps[name].updateApiForServer(this.serverApiPath, apiImplementation);
 				}
 			}
 			catch (e: any)
@@ -75,5 +75,5 @@ export type ConfigAppInfo = {
 };
 
 export type AppComponents = {
-	[key: string]: IonApp.Component<any>;
+	[key: string]: any;
 };

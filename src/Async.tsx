@@ -1,532 +1,176 @@
 import React from "react";
-import ReactDOM from "react-dom";
-import { IonAppContext } from "./IonAppContext";
+import { RenderContext, Renderer } from "./Renderer";
+import { hash } from "./utils/string";
+import { Context } from "./Context"
 import { object } from "./utils";
 import { cloneError } from "./utils/object";
-import { hash } from "./utils/string";
-import type { IonApp } from "./IonApp";
 import { Static } from "./Static";
 
 export namespace Async
 {
-	const componentMap: AsyncComponent<any, any>[] = [];
-
-	const Context = React.createContext<ContextType>({
-		data: {},
-		resolvers: {},
-		resolvedDataStack: [],
-		popIndex: 0,
-		isMounted: false,
-		cache: {},
-		fetcher: async () => { },
-		abortControllers: {}
-	});
-
-	/** @internal */
-	export let serverApiFetcher: IonApp.Fetcher = async () => { };
-
-	export const Provider = ({ context, children }: React.PropsWithChildren<{ context: ContextType }>) =>
+	const resolve = async (resolver: Resolver<any, any>, props: any): Promise<Data<any>> =>
 	{
-		React.useEffect(() => 
-		{
-			context.isMounted = true;
-
-			let promises: Promise<any>[] = [];
-
-			Object.keys(context.resolvers).forEach(id => 
-			{
-				const [resolver, props] = context.resolvers[id];
-				const aborter = context.abortControllers[id];
-				promises.push(resolve(resolver, props, context.fetcher, aborter?.signal));
-			});
-
-			Promise.all(promises).then(data => 
-			{
-				ReactDOM.unstable_batchedUpdates(() => 
-				{
-					Object.keys(context.resolvers).forEach((k, i) => 
-					{
-						const abortCtrl = context.abortControllers[k];
-						if (abortCtrl.signal?.aborted)
-						{
-							context.data[k] = {
-								canceled: (abortCtrl.signal as any).reason || true,
-								isInvalidated: false,
-								isLoading: false,
-							}
-							console.log(`Async resolver canceled for ${k}`);
-						}
-						else
-						{
-							context.data[k] = data[i];
-						}
-
-						context.resolvers[k][2]?.forEach(setState => setState(context.data[k]));
-					});
-					context.resolvers = {};
-				});
-			});
-
-			Object.keys(context.cache).forEach(id => 
-			{
-				const createTimeout = () =>
-				{
-					const c = context.cache[id];
-					if (!Number.isFinite(c.options.duration))
-						return;
-
-					if (c.timeout)
-						clearTimeout(c.timeout);
-
-					c.timeout = setTimeout(() => 
-					{
-						const c = context.cache[id];
-
-						if (!c.options.invalidate)
-						{
-							resolve(c.resolver, c.props, context.fetcher).then(data => 
-							{
-								context.data[id] = data;
-
-								const c = context.cache[id];
-
-								ReactDOM.unstable_batchedUpdates(() => 
-								{
-									c.dispatchers.forEach((setState) => setState(data));
-								});
-
-								createTimeout();
-							});
-						}
-						else
-						{
-							ReactDOM.unstable_batchedUpdates(() => 
-							{
-								delete context.data[id];
-								c.dispatchers.forEach((setState) => 
-								{
-									setState({
-										isInvalidated: true,
-										isLoading: false,
-										canceled: false
-									});
-								});
-								context.cache[id] = {
-									...context.cache[id],
-									dispatchers: [],
-									timeout: null
-								};
-							});
-						}
-
-					}, c.options.duration);
-				}
-
-				createTimeout();
-			});
-
-			return () => { context.isMounted = false; };
-		}, []);
-
-		return (
-			<Context.Provider value={context}>
-				{children}
-			</Context.Provider>
-		);
-	}
-
-	const createId = <P extends {}>(id: number, props: P) => hash(`${id}.${JSON.stringify(props)}`);
-
-	const resolve = <P extends {}, D>(resolver: Resolver<P, D>, props: P, fetcher: IonApp.Fetcher, signal?: AbortSignal) => new Promise<AsyncData<D>>(async (res) => 
-	{
-		let data: Awaited<D> | undefined = undefined;
-		let error: Error | undefined = undefined;
-		let aborted = false;
-
 		try
 		{
-			serverApiFetcher = fetcher;
-			data = await resolver({ ...props, fetch: (url, options) => fetcher(url, { ...options, signal }) } as any);
+			return {
+				data: await resolver(props),
+				isLoading: false
+			}
 		}
 		catch (e)
 		{
-			if (e.name === "AbortError")
-			{
-				aborted = true;
-			}
-			else
-			{
-				console.log(e);
-				error = cloneError(e);
-			}
-		}
 
-		if (signal && signal.aborted)
-		{
-			res({
-				isInvalidated: false,
-				isLoading: false,
-				data,
-				error,
-				canceled: (signal as any).reason || true
-			});
+			return {
+				error: cloneError(e),
+				isLoading: false
+			}
 		}
+	}
+
+	export const resolveComponents = async (context: ContextType, onResolved: (component: React.FC<any>, props: any, context: Map<Context<any>, any>) => any) =>
+	{
+		const resolvers = object.moveAndReplace(context, "resolvers", {});
+		for (const id in resolvers)
+		{
+			const { components, props, resolver } = resolvers[id];
+			const data = await resolve(resolver, props);
+
+			context.data[id] = data;
+
+			console.group("resolved async");
+			for (const { component, contexts } of components)
+			{
+				await onResolved(component, { ...props, ...data }, contexts);
+			}
+			console.groupEnd();
+		}
+	}
+
+	const getData = (context: RenderContext, id: string) => 
+	{
+		let data = context.async.data[id];
+
+		if (data)
+			return data;
+
+		if (Renderer.isHydrating(context))
+		{
+			data = context.async.renderStack[context.async.hydrateIndex++];
+			context.async.data[id] = data;
+		}
+		
+		return data;
+	};
+
+	const addAsyncResolver = (renderContext: RenderContext, id: string, fc: React.FC<any>, props: any, resolver: Resolver<any, any>) =>
+	{
+		const data = {
+			isLoading: true,
+		};
+
+		const resolveInfo = {
+			component: fc,
+			props,
+			contexts: Renderer.copyCurrentContexts(renderContext)
+		};
+
+		if (!renderContext.async.resolvers[id])
+			renderContext.async.resolvers[id] = {
+				components: [resolveInfo],
+				props,
+				resolver
+			};
 		else
-		{
-			res({
-				isInvalidated: false,
-				isLoading: false,
-				data,
-				error,
-				canceled: false
-			});
-		}
-	});
+			renderContext.async.resolvers[id].components.push(resolveInfo);
 
-	export const resolveComponents = async (context: ContextType) =>
-	{
-		let promises: Promise<any>[] = [];
-
-		Object.keys(context.resolvers).forEach(id => 
-		{
-			const [resolver, props] = context.resolvers[id];
-			promises.push(resolve(resolver, props, context.fetcher));
-		});
-
-		const data = await Promise.all(promises);
-
-		const map: DataMap = {};
-
-		Object.keys(context.resolvers).forEach((k, i) => map[k] = data[i]);
-
-		context.resolvers = {};
-
-		return map;
+		return data;
 	}
 
-	export const useContext = () => React.useContext(Context);
-
-	export const getDynamicPaths = (context: ContextType) =>
+	export const create = <Props extends {}, D>(resolver: Resolver<Props, D>, fc: React.FC<Props & Data<D>>): FC<Props> =>
 	{
-		const paths: string[] = [];
-		Object.keys(context.data).forEach(id => 
+		const c = ((props: Props & FCProps) => 
 		{
-			const d = context.data[id];
-			if (d?.data?.__IMPORT_PATH__)
+			const { cache, prefetch, ...rest } = props;
+
+			const fcProps = rest as Props;
+
+			const id = React.useMemo(() => `${c.id}.${hash(JSON.stringify(props))}`, [props]);
+
+			const renderContext = Renderer.useContext();
+
+			const [state, setState] = React.useState<Data>(() => 
 			{
-				paths.push(d.data.__IMPORT_PATH__);
-				delete d.data.__IMPORT_PATH__;
-				context.data[id].data = { ...context.data[id].data, __IS_DYNAMIC_IMPORT__: true };
-			}
-		});
-		return paths;
-	}
+				let data = getData(renderContext, id);
 
-	const parseCache = (cache?: number | CacheOptions, defaultCacheOptions?: number | CacheOptions): Required<CacheOptions> =>
-	{
-		let duration = Infinity;
-		let invalidate = true;
+				if (data)
+					return data;
 
-		if (typeof defaultCacheOptions === "object")
-		{
-			duration = defaultCacheOptions.duration
-			invalidate = defaultCacheOptions.invalidate === undefined ? true : defaultCacheOptions.invalidate;
-		}
-
-		if (typeof cache === "number")
-		{
-			duration = cache;
-		}
-		else if (typeof cache !== "undefined")
-		{
-			duration = cache.duration
-			invalidate = cache.invalidate === undefined ? true : cache.invalidate;
-		}
-
-		return { invalidate, duration };
-	}
-
-	export const create = <Props extends {}, Data>(resolver: Resolver<Props, Data>, component: React.FC<Props & ComponentData<Data> & AbortProps>, defaultAsyncProps: AsyncProps = {}): AsyncComponent<Props, Data> =>
-	{
-		defaultAsyncProps = { prefetch: true, cache: Infinity, ...defaultAsyncProps };
-
-		const c = (({ cache, prefetch, ...props }: Props & ComponentData<Data> & { resolveIndex?: number } & AsyncProps) =>
-		{
-			prefetch = prefetch === undefined ? defaultAsyncProps.prefetch : prefetch;
-
-			const dynamicContext = Static.useAutoDynamicContext();
-
-			const ctx = useContext();
-			const { isResolving, isHydrating } = IonAppContext.use();
-
-			const id = createId(c.id, props);
-
-			const abortController = React.useRef<AbortController | null>(null);
-
-			const propsRef = React.useRef(props);
-			const dispatcherIndex = React.useRef(-1);
-
-			const [state, setState] = React.useState<AsyncData<Data>>(() => 
-			{
-				if (isHydrating)
-				{
-					const d = ctx.resolvedDataStack[ctx.popIndex];
-					ctx.popIndex++;
-					if (d)
-					{
-						if (d.data?.__IS_DYNAMIC_IMPORT__) // filter dynamic imports
-						{
-							if (ctx.data[id])
-							{
-								d.data = ctx.data[id];
-								return ctx.data[id];
-							}
-
-							ctx.resolvers[id] = [resolver, props];
-						}
-
-						ctx.data[id] = d;
-
-						ctx.cache[id] = {
-							dispatchers: [],
-							options: parseCache(cache, defaultAsyncProps.cache),
-							timeout: null,
-							resolver,
-							props
-						};
-
-						return d;
-					}
-				}
-				else if (ctx.data[id])
-					return ctx.data[id];
-				else if (isResolving && prefetch)
-					ctx.resolvers[id] = [resolver, props];
+				if (Renderer.isResolving(renderContext))
+					return addAsyncResolver(renderContext, id, fc, fcProps, resolver);
 
 				return {
-					isLoading: true,
-					isInvalidated: false,
-					canceled: false
+					isLoading: true
 				};
 			});
 
-			if (env.isServer && !isResolving)
-			{
-				ctx.resolvedDataStack.push(state);
-			}
+			if (env.isServer && !Renderer.isResolving(renderContext))
+				renderContext.async.renderStack.push(state);
 
-			React.useEffect(() => 
-			{
-				if (!object.equals(propsRef.current, props))
-				{
-					propsRef.current = props;
-				}
-				else // on mount
-				{
-					if (state.isLoading)
-					{
-						if (ctx.isMounted)
-						{
-							abortController.current = new AbortController();
+			if(Renderer.isStaticRender(renderContext))
+				return Static.renderAsDynamicComponent(c, props, id);
+			
+			return React.createElement(fc, { ...fcProps, ...state });
+		}) as FC<Props>;
 
-							resolve(resolver, props as any, ctx.fetcher, abortController.current.signal).then(d => 
-							{
-								ctx.data[createId(c.id, props)] = d;
-								setState(d);
-							});
-						}
-						else
-						{
-							if (ctx.resolvers[id] && ctx.resolvers[id][2])
-								ctx.resolvers[id][2]!.push(setState);
-							else
-								ctx.resolvers[id] = [resolver, props, [setState]];
-
-							if (!ctx.abortControllers[id])
-								ctx.abortControllers[id] = new AbortController();
-
-							abortController.current = ctx.abortControllers[id];
-						}
-					}
-				}
-
-				const options = parseCache(cache, defaultAsyncProps.cache);
-
-				if (Number.isFinite(options.duration))
-				{
-					if (!ctx.cache[id])
-					{
-						console.log(`Cache did not exists for ${id}!`);
-
-						ctx.cache[id] = {
-							dispatchers: [],
-							options,
-							timeout: null,
-							resolver,
-							props
-						};
-					}
-					if (dispatcherIndex.current === -1)
-					{
-						let found = false;
-						for (let i = 0; i < ctx.cache[id].dispatchers.length; i++)
-						{
-							if (!ctx.cache[id].dispatchers[i])
-							{
-								ctx.cache[id].dispatchers[i] = setState
-								dispatcherIndex.current = i;
-								found = true;
-								break;
-							}
-						}
-
-						if (!found)
-							dispatcherIndex.current = ctx.cache[id].dispatchers.push(setState) - 1;
-
-					}
-					else
-						ctx.cache[id].dispatchers[dispatcherIndex.current] = setState;
-				}
-
-				return () =>
-				{
-					if (dispatcherIndex.current > -1)
-						delete ctx.cache[id]?.dispatchers[dispatcherIndex.current];
-				}
-			}, [props]);
-
-			const abort = (reason?: string) =>
-			{
-				if (abortController.current)
-				{
-					abortController.current.abort(reason);
-				}
-			}
-
-			if(dynamicContext)
-				return dynamicContext.dynamic(component, { ...props as any, ...state, abort });
-
-			return React.createElement(component, { ...props as any, ...state, abort });
-		}) as unknown as AsyncComponent<Props, Data>;
-
-		c.id = hash(resolver.toString());
-		c.component = component;
-		c.resolver = resolver;
-
-		componentMap.push(c);
+		c.id = hash(fc.toString());
 
 		return c;
 	}
 
-	const DynamicErrorComponent = ({ error }: React.PropsWithoutRef<{ error: Error }>) => (
-		<div>
-			{error.message !== error.name ? <><h1>{error.name}</h1><h3>{error.message}</h3></> : <h1>{error.name}</h1>}
-			{error.stack?.split("\n").map((s, i) => <span key={i}>{s}<br /></span>)}
-		</div>
-	);
+	export type Resolver<Props extends {}, Data> = (data: Omit<Props, keyof FCProps | "children"> & {}) => Data;
 
-	const DynamicLoadingComponent = () => <p>Loading...</p>;
-
-	const DynamicCanceledComponent = () => <p>Canceled!</p>;
-
-	type DynamicProps = {
-		onLoad?: React.FC<any>;
-		onError?: React.FC<{ error?: Error; }>;
-		onCanceled?: React.FC<{ reason?: string }>;
-	};
-
-	type InferModule<T> = T extends () => Promise<infer Module> ? Module : never;
-
-	export const createDynamic = <Resolver extends () => Promise<any>, K extends keyof M, M = InferModule<Resolver>, C = M[K]>(importer: Resolver, key: K) => Async.create<DynamicProps & C extends (props: infer P) => any ? P extends {} ? P : {} : {}, M[K]>(importer as any, ({ abort, canceled, isInvalidated, isLoading, data, error, ...props }) => 
-	{
-		if (data)
-		{
-			if ((data as any)[key])
-				return React.createElement((data as any)[key], props);
-
-			else if (!(data as any).__IS_DYNAMIC_IMPORT__)
-				console.warn(`Invalid dynamic component!`);
-
-			return null;
-
-		}
-		else if (error)
-			return React.createElement(DynamicErrorComponent, { error });
-		else if (isLoading)
-			return React.createElement(DynamicLoadingComponent);
-		else if (canceled)
-			return React.createElement(DynamicCanceledComponent, { reason: canceled });
-		else
-			console.warn(`Could not render DynamicComponent with importer ${importer.toString()} and key ${key.toString()}`);
-		return null;
-	});
-
-
-	export type Resolver<Props extends {}, Data> = (data: Omit<Props, keyof AsyncProps | "children"> & { fetch: IonApp.Fetcher }) => Data;
-
-	export type ResolverProps<Props extends {} = {}> = Omit<Props, keyof AsyncProps | "children"> & { fetch: IonApp.Fetcher };
-
-	export interface AsyncComponent<Props extends {}, Data> extends React.FC<Props & AsyncProps>
-	{
+	type FC<P extends {}> = React.FC<P & FCProps> & {
 		id: number;
-		component: React.FC<Props & ComponentData<Data> & AbortProps>;
-		resolver: Resolver<Props, Data>;
 	};
 
-	type AsyncProps = {
-		cache?: CacheOptions | CacheOptions["duration"];
+	type FCProps = {
 		prefetch?: boolean;
-	};
-
-	export type ContextType = {
-		data: DataMap;
-		resolvers: Resolvers;
-		resolvedDataStack: AsyncData<any>[];
-		popIndex: number;
-		isMounted: boolean;
-		cache: CacheMap;
-		fetcher: IonApp.Fetcher;
-		abortControllers: {
-			[id: string]: AbortController;
-		}
-	};
-
-	type CacheMap = {
-		[id: string]: {
-			resolver: Resolver<any, any>;
-			props: any;
-			options: CacheOptions;
-			timeout: NodeJS.Timeout | null;
-			dispatchers: StateDispatcher[];
-		};
-	}
-
-	type DataMap = {
-		[key: string]: AsyncData<any>;
-	};
-
-	type Resolvers = {
-		[key: string]: [Resolver<any, any>, any] | [Resolver<any, any>, any, StateDispatcher[]];
-	}
-
-	type StateDispatcher = (state: AsyncData<any>) => void;
-
-	type ComponentData<T> = {
-		data?: Awaited<T> | undefined;
-		error?: Error | undefined;
-		isLoading: boolean;
-		isInvalidated: boolean;
-		canceled: boolean | string;
-	};
-
-	type AsyncData<T> = ComponentData<T> & {
-		cache?: CacheOptions;
+		cache?: number | CacheOptions;
 	};
 
 	type CacheOptions = {
 		duration: number;
-		invalidate?: boolean;
 	};
 
-	type AbortProps = { abort: (reason?: string) => void };
+	export type ContextType = {
+		data: DataMap;
+		resolvers: ResolversMap;
+		renderStack: RenderStack;
+		hydrateIndex: number;
+	};
+
+	type Data<T = any> = {
+		data?: T;
+		error?: Error;
+		isLoading: boolean;
+	};
+
+	export type DataMap = {
+		[key: string]: Data<any>;
+	};
+
+	type ResolverInfo = {
+		component: React.FC<any>;
+		contexts: Map<Context<any>, any>;
+	};
+
+	type ResolversMap = {
+		[key: string]: {
+			props: any;
+			components: ResolverInfo[];
+			resolver: Resolver<any, any>;
+		};
+	};
+
+	type RenderStack = Data[];
 }

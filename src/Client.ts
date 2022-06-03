@@ -1,4 +1,4 @@
-import { Async } from "./Async";
+// import { Async } from "./Async";
 import { IonApp } from "./IonApp";
 import type { ApiImplementation, ApiManifest, ApiScheme, CreateClientApi } from "./server";
 import { object } from "./utils";
@@ -28,10 +28,10 @@ export namespace Client
 
 			apiManifest.routes[path].forEach(m => 
 			{
-				if (m === "get")
-					target[m] = (props: any) => IonApp.clientFetcher(apiManifest.basePath + path + `?${object.serialize(props || {})}`, { method: m.toUpperCase() });
-				else
-					target[m] = (props: any) => IonApp.clientFetcher(apiManifest.basePath + path, { method: m.toUpperCase(), body: JSON.stringify(props || {}) });
+				// if (m === "get")
+					// target[m] = (props: any) => IonApp.clientFetcher(apiManifest.basePath + path + `?${object.serialize(props || {})}`, { method: m.toUpperCase() });
+				// else
+					// target[m] = (props: any) => IonApp.clientFetcher(apiManifest.basePath + path, { method: m.toUpperCase(), body: JSON.stringify(props || {}) });
 			});
 		}
 
@@ -60,10 +60,10 @@ export namespace Client
 				}
 				for (const m of methods)
 				{
-					if (m === "get")
-						target[m] = (props: any) => Async.serverApiFetcher(apiBasePath + p + `?${object.serialize(props || {})}`, { method: m.toUpperCase() });
-					else
-						target[m] = (props: any) => Async.serverApiFetcher(apiBasePath + p, { method: m.toUpperCase(), body: JSON.stringify(props || {}) });
+					// if (m === "get")
+					// 	target[m] = (props: any) => Async.serverApiFetcher(apiBasePath + p + `?${object.serialize(props || {})}`, { method: m.toUpperCase() });
+					// else
+					// 	target[m] = (props: any) => Async.serverApiFetcher(apiBasePath + p, { method: m.toUpperCase(), body: JSON.stringify(props || {}) });
 				}
 			}
 

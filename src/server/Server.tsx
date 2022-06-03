@@ -127,7 +127,7 @@ export class Server
 			this._apiFallback = apiFallback;
 	}
 
-	protected onAppRoute(appName: string, component: IonApp.Component<any>, appInfo: ConfigAppInfo)
+	protected onAppRoute(appName: string, component: any, appInfo: ConfigAppInfo)
 	{
 		return async (req: express.Request, res: express.Response) =>
 		{

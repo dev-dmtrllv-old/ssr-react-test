@@ -1,172 +1,146 @@
 import React from "react";
+import { RenderContext, Renderer } from "./Renderer";
+import { object } from "./utils";
 import { hash } from "./utils/string";
 
 export namespace Static
 {
-	const Context = React.createContext<ContextType>({
-		components: {}
+	const staticRenders: Renders = {};
+
+	const DynamicContext = React.createContext<DynamicContextType>({
+		dynamic: (component: React.FC<any>, props: any = {}, id?: string) => React.createElement(component, props),
 	});
 
-
-	const AutoDynamicContext = React.createContext<AutoDynamicContextType | null>({
-		dynamic: (component, props) => React.createElement(component, props),
-	});
-
-	export const useAutoDynamicContext = () =>
-	{
-		return React.useContext(AutoDynamicContext);
-	}
-
-	const staticRenders: RenderMap = {};
-
-	export const Provider = ({ children, context }: React.PropsWithChildren<{ context: ContextType }>) =>
+	const DynamicProvider = ({ context, children }: React.PropsWithChildren<{ context: DynamicContextType }>) =>
 	{
 		return (
-			<Context.Provider value={context}>
+			<DynamicContext.Provider value={context}>
 				{children}
-			</Context.Provider>
-		);
-	};
-
-	const createComponentID = (component: React.FC<any>) => hash(component.toString());
-
-	const createID = (componentID: number, props: any) => `${componentID}.${hash(JSON.stringify(props))}`;
-
-	export const injectStaticComponents = (html: string, staticRenderResult: RenderResult) =>
-	{
-		Object.keys(staticRenderResult).forEach(k => html = html.replaceAll(k, staticRenderResult[k]));
-		return html;
+			</DynamicContext.Provider>
+		)
 	}
 
-	export const getStaticRenderInfo = (id: string): RenderInfo | undefined => staticRenders[id];
+	export const renderAsDynamicComponent = <P extends {}>(component: React.FC<P>, props: P, id?: string) => React.useContext(DynamicContext).dynamic(component, props, id);
 
-	export const resolveComponents = async (context: ContextType, onResolve: ResolveCallback) =>
+	const createDynamicID = (component: React.FC<any>, props: any) => `${hash(component.toString())}.${hash(JSON.stringify(props))}`;
+
+	export const inject = (html: string, renders: ResolvedRenders) => 
 	{
-		const staticRenderResult: RenderResult = {};
+		for (const id in renders)
+			html = html.replaceAll(id, renders[id]);
+		return html;
+	};
 
-		const components = context.components;
+	export const resolveComponents = async (context: RenderContext, resolveCallback: (component: React.FC<any>) => string, resolveDynamic: (component: React.FC<any>, props: any) => Promise<string>): Promise<ResolvedRenders> =>
+	{
+		const components = object.moveAndReplace(context.staticContext, "components", {});
 
-		context.components = {};
+		const renderResult: ResolvedRenders = {};
 
 		for (const id in components)
 		{
-			let info = getStaticRenderInfo(id);
-
-			if (!info)
+			if (!staticRenders[id])
 			{
 				const { component, props } = components[id];
 
-				const dynamicComponents: { [id: string]: DynamicComponentInfo<any> } = {};
+				let dynamicComponents: { [key: string]: DynamicComponentInfo } = {};
 
-				const dynamic: DynamicResolver = (c, props: any = {}) => 
-				{
-					const id = hash(c.toString()) + "." + hash(JSON.stringify(props));
-					dynamicComponents[id] = { component: c, props };
-					return id;
-				}
-
-				const p: ComponentProps = {
-					...props,
-					dynamic,
+				const dynamicContext: DynamicContextType = {
+					dynamic: (component, props = {} as any, id = createDynamicID(component, props)) =>
+					{
+						dynamicComponents[id] = { component, props };
+						return id;
+					},
 				};
 
-				let html = await onResolve(() => <AutoDynamicContext.Provider value={{ dynamic }}>{React.createElement(component, p)}</AutoDynamicContext.Provider>, {});
-				// console.log(`resolved static render with html: ${html}`);
-				for (const id in context.components)
-				{
-					const info = getStaticRenderInfo(id);
-					if (info)
-						html = html.replaceAll(id, info.html);
-				}
+				const html = resolveCallback(() => <DynamicProvider context={dynamicContext}>{React.createElement(component, { ...props, dynamic: dynamicContext.dynamic })}</DynamicProvider>);
 
-				info = { html, dynamic: dynamicComponents };
+				const renders = await resolveComponents(context, resolveCallback, resolveDynamic);
 
-				staticRenders[id] = info;
+				staticRenders[id] = { html: inject(html, renders), dynamicComponents };
 			}
 
-			let html = info.html;
+			const render = staticRenders[id];
 
-			for (const id in info.dynamic)
+			let html = render.html;
+
+			for (const id in render.dynamicComponents)
 			{
-				const { component, props } = info.dynamic[id];
-				const dynamicHtml = await onResolve(component, props);
-
-				html = html.replaceAll(id, dynamicHtml);
+				const { component, props } = render.dynamicComponents[id];
+				const resolvedHtml = await resolveDynamic(component, props);
+				html = html.replaceAll(id, resolvedHtml);
 			}
-			console.log(info.dynamic);
-			staticRenderResult[id] = html;
+
+			renderResult[id] = html;
 		}
 
-		return staticRenderResult;
+		return renderResult;
 	}
 
-	export const create = <P extends {}>(component: React.FC<P & ComponentProps>): Component<P> =>
+	export const create = <P extends {}>(fc: React.FC<P & StaticProps>): FC<P> =>
 	{
-		const c: Component<P> = ((props: P) => 
+		const componentID = hash(fc.toString());
+
+		return ({ ...props }: P & StaticProps) => 
 		{
-			if (env.isClient)
-				return React.createElement(component, { ...props, dynamic: (component, props) => React.createElement(component, props) });
-			
-			const idRef = React.useRef(createID(c.id, props));
+			const { staticContext } = Renderer.useContext();
 
-			const { components } = React.useContext(Context);
+			if (env.isServer)
+			{
+				const id = `${componentID}.${hash(JSON.stringify(props))}`;
+				staticContext.components[id] = {
+					component: fc,
+					props
+				};
+				return id as any;
+			}
 
-			const id = idRef.current;
-
-			if (!components[id])
-				components[id] = { component, props };
-
-			return id;
-		}) as any;
-
-		c.id = createComponentID(component);
-
-		return c;
+			return React.createElement(fc, { ...props });
+		};
 	}
 
-	export type ContextType = {
-		components: {
-			[id: string]: ComponentInfo<any>;
-		}
+	type ResolvedRenders = { [key: string]: string };
+
+	type DynamicContextType = {
+		dynamic: DynamicWrapper;
 	};
 
-	type AutoDynamicContextType = ComponentProps;
-
-	type Component<P extends {}> = React.FC<P> & {
-		id: number;
-	};
-
-	type ComponentInfo<P extends {}> = {
+	type DynamicComponentInfo<P extends {} = {}> = {
 		component: React.FC<P>;
 		props: P;
+	}
+
+	type StaticComponentProps = {
+
+	}
+
+	type FC<P> = React.FC<P & StaticComponentProps>;
+
+	type DynamicWrapper = <P extends {}>(component: React.FC<P>, props?: P, id?: string) => React.FunctionComponentElement<any> | string;
+
+	type StaticProps = {
+		dynamic: DynamicWrapper;
+	};
+
+	type Renders = {
+		[key: string]: RenderInfo;
+	};
+
+	type DynamicComponentMap = {
+		[key: string]: DynamicComponentInfo;
 	};
 
 	type RenderInfo = {
 		html: string;
-		dynamic: {
-			[id: string]: DynamicComponentInfo<any>;
+		dynamicComponents: DynamicComponentMap;
+	};
+
+	export type ContextType = {
+		components: {
+			[key: string]: {
+				component: React.FC<any>;
+				props: any;
+			};
 		}
 	};
-
-	type RenderMap = {
-		[id: string]: RenderInfo;
-	};
-
-	type ResolveCallback = <P extends {}>(component: React.FC<P>, props: P) => Promise<string>;
-
-	type DynamicComponentInfo<P extends {}> = {
-		component: React.FC<P>;
-		props: P;
-	};
-
-	export type DynamicResolver = <C extends React.FC<P>, P extends {}>(component: C, props?: P) => JSX.Element | string;
-
-	type ComponentProps = {
-		dynamic: DynamicResolver;
-	};
-
-	export type RenderResult = {
-		[key: string]: string;
-	};
-
 }

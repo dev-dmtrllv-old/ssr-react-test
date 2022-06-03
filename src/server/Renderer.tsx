@@ -10,12 +10,12 @@ import { object } from "../utils";
 export class Renderer
 {
 	protected readonly server: Server;
-	protected readonly component: IonApp.Component<any>;
+	protected readonly component: any;
 	protected readonly req: Request;
 	protected readonly res: Response<any, Record<string, any>>;
 	public readonly session: Session;
 
-	constructor(server: Server, component: IonApp.Component<any>, req: Request, res: Response)
+	constructor(server: Server, component: any, req: Request, res: Response)
 	{
 		this.server = server;
 		this.component = component;
@@ -24,7 +24,7 @@ export class Renderer
 		this.session = new Session(req);
 	}
 
-	private readonly fetcher: IonApp.Fetcher = async (_url, options) =>
+	private readonly fetcher: any = async (_url, options) =>
 	{
 		let url = isClass(_url, URL) ? _url.href : _url.toString();
 
@@ -85,16 +85,15 @@ export class Renderer
 				return false;
 			}
 
-			const html = await this.component.render(title, this.req.url, onRedirect, appName, manifest, this.fetcher, this.server.apiManifest, this.server.appsSSRData);
+			const response = await this.component.renderServer();
 
-			if (redirectURL !== this.req.url)
-				return false;
-
-			this.res.send(html);
+			this.res.send(response);
+			
 			return true;
 		}
 		catch (e)
 		{
+			console.error(e);
 			this.res.json(cloneError(e));
 			return true;
 		}

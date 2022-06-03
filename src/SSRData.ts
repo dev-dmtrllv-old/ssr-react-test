@@ -1,8 +1,8 @@
-import { Async } from "./Async";
+// import { Async } from "./Async";
 import { ApiManifest } from "./server";
 
 export type SSRData = {
-	async: Async.ContextType["resolvedDataStack"];
+	// async: Async.ContextType["resolvedDataStack"];
 	api: ApiManifest;
 	renderError?: Error;
 	apps: {

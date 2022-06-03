@@ -81,8 +81,8 @@ export const equals = <T>(a: T, b: T) =>
 			return true;
 		case "object":
 			{
-				const keysA = Object.keys(a);
-				const keysB = Object.keys(b);
+				const keysA = Object.keys(a as any);
+				const keysB = Object.keys(b as any);
 				if (!equals(keysA, keysB))
 					return false;
 
@@ -94,3 +94,17 @@ export const equals = <T>(a: T, b: T) =>
 			}
 	}
 } 
+
+export const move = <T extends {}, K extends keyof T>(object: T, k: K, newValue: T[K] | undefined = undefined) =>
+{
+	const val = object[k];
+	delete object[k];
+	return val;
+}
+
+export const moveAndReplace = <T extends {}, K extends keyof T>(object: T, k: K, newValue: T[K]) =>
+{
+	const val = object[k];
+	object[k] = newValue;
+	return val;
+}
