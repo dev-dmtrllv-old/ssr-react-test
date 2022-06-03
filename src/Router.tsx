@@ -31,9 +31,6 @@ export const useRouter = (): Readonly<RouterContextType> => React.useContext(Rou
 
 export const useRoute = () => React.useContext(RouteContext);
 
-export const useRouteParams = <ParamKeys extends string>(): KeyedMap<ParamKeys, string> => useRoute().params as KeyedMap<ParamKeys, string>;
-export const useRouteQuery = <QueryKeys extends string>(): KeyedMap<QueryKeys, string> => useRoute().query as KeyedMap<QueryKeys, string>;
-
 export const splitUrl = (url: string): UrlState =>
 {
 	const [path, q = ""] = url.split("?")
