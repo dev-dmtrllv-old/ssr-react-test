@@ -19,6 +19,7 @@ export class Renderer<P extends {} = {}>
 		contextStacks: new Map(),
 		renderType: "render",
 		async: {
+			didMount: false,
 			data,
 			resolvers: {},
 			renderStack: [],
@@ -189,8 +190,6 @@ export class Renderer<P extends {} = {}>
 			);
 		}
 
-
-
 		return (
 			<Renderer.renderContext.Provider value={{ ...this.context, renderType }}>
 				<Router title={title} url={url} onRedirect={onRedirect} resolve={this.resolveRoute} onTitleChange={onTitleChange}>
@@ -221,7 +220,22 @@ export class Renderer<P extends {} = {}>
 		await this.resolve({ title, url, onRedirect: () => { throw new Error("Redirected in client resolve!"); } });
 		console.groupEnd();
 
-		return ReactDOM.hydrateRoot(el, this.wrappedComponent({ title, url }));
+		const HydrateApp = () => 
+		{
+			React.useEffect(() => 
+			{
+				this.context.async.didMount = true;
+				Async.resolveComponents(this.context.async, this.resolveAsync);
+				return () =>
+				{
+					this.context.async.didMount = false;
+				};
+			}, []);
+
+			return this.wrappedComponent({ title, url });
+		};
+
+		return ReactDOM.hydrateRoot(el, React.createElement(HydrateApp));
 	}
 
 	public resolveToStaticHtml = async (component: React.FC<any>, props: any) =>
@@ -261,9 +275,12 @@ export class Renderer<P extends {} = {}>
 
 	protected readonly resolve = async (wrapProps: WrappedAppProps = {}) =>
 	{
-		ReactDOMServer.renderToStaticMarkup(this.wrappedComponent({ renderType: "resolving", ...wrapProps }));
+		const redirecter = this.redirectWrapped(wrapProps.onRedirect || (() => {}));
 
-		// todo early exit when redirected ???
+		ReactDOMServer.renderToStaticMarkup(this.wrappedComponent({ renderType: "resolving", ...wrapProps, onRedirect: redirecter.callback }));
+
+		if(redirecter.didRedirect)
+			return {};
 
 		await Async.resolveComponents(this.context.async, this.resolveAsync);
 

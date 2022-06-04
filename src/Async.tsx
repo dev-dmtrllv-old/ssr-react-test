@@ -5,6 +5,7 @@ import { Context } from "./Context"
 import { object } from "./utils";
 import { cloneError } from "./utils/object";
 import { Static } from "./Static";
+import ReactDOM from "react-dom";
 
 export namespace Async
 {
@@ -37,17 +38,33 @@ export namespace Async
 	export const resolveComponents = async (context: ContextType, onResolved: (component: React.FC<any>, props: any, context: Map<Context<any>, any>) => any) =>
 	{
 		const resolvers = object.moveAndReplace(context, "resolvers", {});
+		let promises: Promise<any>[] = [];
+		let ids: string[] = [];
+
 		for (const id in resolvers)
 		{
-			const { components, props, resolver } = resolvers[id];
-			const data = await resolve(resolver, props);
+			const { props, resolver } = resolvers[id];
+			promises.push(resolve(resolver, props));
+			ids.push(id);
+		}
 
+		for (let i = 0; i < ids.length; i++)
+		{
+			const id =  ids[i];
+			const data = await promises[i];
+			const { components, props, stateDispatchers } = resolvers[id];
+			
 			context.data[id] = data;
+			
+			let resolvedPromises: Promise<any>[] = [];
 
 			for (const { component, contexts } of components)
-			{
-				await onResolved(component, { ...props, ...data }, contexts);
-			}
+				resolvedPromises.push(onResolved(component, { ...props, ...data }, contexts));
+
+			await Promise.all(resolvedPromises);
+
+			if (stateDispatchers.length > 0)
+				ReactDOM.unstable_batchedUpdates(() => stateDispatchers.forEach(s => s(data)));
 		}
 	}
 
@@ -62,13 +79,12 @@ export namespace Async
 		{
 			data = context.async.renderStack[context.async.hydrateIndex++];
 			context.async.data[id] = data;
-			console.log(data);
 		}
 
 		return data;
 	};
 
-	const addAsyncResolver = (renderContext: RenderContext, id: string, fc: React.FC<any>, props: any, resolver: Resolver<any, any>) =>
+	const addAsyncResolver = (renderContext: RenderContext, id: string, fc: React.FC<any>, props: any, resolver: Resolver<any, any>, stateDispatcher?: (state: Data<any>) => any) =>
 	{
 		const data = {
 			isLoading: true,
@@ -81,18 +97,28 @@ export namespace Async
 		};
 
 		if (!renderContext.async.resolvers[id])
+		{
 			renderContext.async.resolvers[id] = {
 				components: [resolveInfo],
 				props,
-				resolver
+				resolver,
+				stateDispatchers: []
 			};
+		}
 		else
+		{
 			renderContext.async.resolvers[id].components.push(resolveInfo);
+		}
+
+		if (stateDispatcher)
+		{
+			renderContext.async.resolvers[id].stateDispatchers.push(stateDispatcher)
+		}
 
 		return data;
 	}
 
-	export const create = <Props extends {}, D>(resolver: Resolver<Props, D>, fc: React.FC<Props & Data<D>>, defaultAsyncProps: Required<FCProps> = defaultProps): FC<Props> =>
+	export const create = <Props extends {}, D>(resolver: Resolver<Props, D>, fc: React.FC<Props & Data<D extends Promise<infer P> ? P : D>>, defaultAsyncProps: Required<FCProps> = defaultProps): FC<Props> =>
 	{
 		const c = ((props: Props & FCProps) => 
 		{
@@ -100,9 +126,11 @@ export namespace Async
 
 			const fcProps = rest as any as Props;
 
+			const createId = () => `${c.id}.${hash(JSON.stringify(props))}`;
+
 			const propsSignature = React.useMemo(() => hash(JSON.stringify(fcProps)), [props]);
 
-			const id = React.useMemo(() => `${c.id}.${hash(JSON.stringify(props))}`, [props]);
+			const id = React.useMemo(createId, [props]);
 
 			const renderContext = Renderer.useContext();
 
@@ -134,10 +162,26 @@ export namespace Async
 				else
 				{
 					let data = getData(renderContext, id, prefetch);
-					
-					if(!data)
+
+					if (!data)
 					{
-						console.log("resolve async data");
+						if (renderContext.async.didMount)
+						{
+							console.log("resolve and did mount");
+							resolve(resolver, fcProps).then(d => 
+							{
+								if(id === createId())
+								{
+									renderContext.async.data[id] = d;
+									setState(d);
+								}
+							});
+							renderContext.async.data[id] = state;
+						}
+						else
+						{
+							addAsyncResolver(renderContext, id, fc, fcProps, resolver, setState);
+						}
 					}
 				}
 				return () =>
@@ -157,7 +201,9 @@ export namespace Async
 		return c;
 	}
 
-	export type Resolver<Props extends {}, Data> = (data: Omit<Props, keyof FCProps | "children"> & {}) => Data;
+	export const createResolver = <P extends {}, Data>(fn: (props: P) => Data): Resolver<P, Data> => fn;
+
+	export type Resolver<Props extends {}, Data> = (data: Omit<Props, keyof FCProps | "children"> & {}) => (Promise<Data> | Data);
 
 	type FC<P extends {}> = React.FC<P & FCProps> & {
 		id: number;
@@ -173,6 +219,7 @@ export namespace Async
 	};
 
 	export type ContextType = {
+		didMount: boolean;
 		data: DataMap;
 		resolvers: ResolversMap;
 		renderStack: RenderStack;
@@ -199,6 +246,7 @@ export namespace Async
 			props: any;
 			components: ResolverInfo[];
 			resolver: Resolver<any, any>;
+			stateDispatchers: ((state: Data<any>) => any)[];
 		};
 	};
 
