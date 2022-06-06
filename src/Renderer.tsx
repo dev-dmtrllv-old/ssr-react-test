@@ -23,7 +23,8 @@ export class Renderer<P extends {} = {}>
 			data,
 			resolvers: {},
 			renderStack: [],
-			hydrateIndex: 0
+			hydrateIndex: 0,
+			cacheDispatchers: {},
 		},
 		staticContext: {
 			components: {}
