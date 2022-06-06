@@ -6,8 +6,9 @@ export type SSRData = {
 	api: ApiManifest;
 	renderError?: Error;
 	apps: {
-		[url: string]: string[];
+		[url: string]: string;
 	};
+	appUrl: string;
 	title: string;
 };
 

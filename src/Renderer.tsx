@@ -28,7 +28,9 @@ export class Renderer<P extends {} = {}>
 		},
 		staticContext: {
 			components: {}
-		}
+		},
+		externalUrls: [],
+		appUrl: ""
 	});
 
 	private static readonly renderContext = React.createContext<RenderContext>(this.createContext());
@@ -107,7 +109,6 @@ export class Renderer<P extends {} = {}>
 
 	private readonly _resolveRoute = async (title: string, from: string, to: string, cancelToken: CancelToken, passedUrls: string[] = []) =>
 	{
-		console.log(`resolve route for ${from} -> ${to}`);
 		let targetUrl = to;
 		let redirectUrl = to;
 		let newTitle = title;
@@ -144,7 +145,7 @@ export class Renderer<P extends {} = {}>
 
 	protected readonly resolveRoute = async (title: string, from: string, to: string, cancelToken: CancelToken) => this._resolveRoute(title, from, to, cancelToken);
 
-	private readonly wrappedComponent = (wrapProps: WrappedAppProps = {}) =>
+	private readonly wrappedComponent = (wrapProps: WrappedAppProps = this.defaultWrappedAppProps) =>
 	{
 		const p = { ...this.defaultWrappedAppProps, ...wrapProps };
 
@@ -200,14 +201,17 @@ export class Renderer<P extends {} = {}>
 		);
 	}
 
-	protected readonly resolveStatic = (component: React.FC<any>) =>
+	protected readonly resolveStatic = (url: string) => (component: React.FC<any>) =>
 	{
-		return ReactDOMServer.renderToStaticMarkup(this.wrappedComponent({ renderType: "static-render", component }));
+		return ReactDOMServer.renderToStaticMarkup(this.wrappedComponent({ url, renderType: "static-render", component }));
 	}
 
 	public readonly hydrate = async (el: HTMLElement) =>
 	{
-		const { api, title, async } = getSSRData();
+		const { api, title, async, apps, appUrl } = getSSRData();
+		
+		this.context.externalUrls = Object.keys(apps);
+		this.context.appUrl = appUrl;
 
 		this.defaultWrappedAppProps.title = title;
 
@@ -226,7 +230,7 @@ export class Renderer<P extends {} = {}>
 			React.useEffect(() => 
 			{
 				this.context.async.didMount = true;
-				Async.resolveComponents(this.context.async, this.resolveAsync);
+				Async.resolveComponents(this.context.async, this.resolveAsync(url));
 				return () =>
 				{
 					this.context.async.didMount = false;
@@ -239,10 +243,10 @@ export class Renderer<P extends {} = {}>
 		return ReactDOM.hydrateRoot(el, React.createElement(HydrateApp));
 	}
 
-	public resolveToStaticHtml = async (component: React.FC<any>, props: any) =>
+	public resolveToStaticHtml = (url: string) => async (component: React.FC<any>, props: any) =>
 	{
-		const renders = await this.resolve({ component, props });
-		return Static.inject(ReactDOMServer.renderToStaticMarkup(this.wrappedComponent({ component, props, renderType: "render" })), renders);
+		const renders = await this.resolve({ url, component, props });
+		return Static.inject(ReactDOMServer.renderToStaticMarkup(this.wrappedComponent({ url, component, props, renderType: "render" })), renders);
 	}
 
 	public readonly render = async (url: string, title: string, onRedirect: RedirectCallback): Promise<RenderResult> =>
@@ -250,7 +254,7 @@ export class Renderer<P extends {} = {}>
 		const redirect = this.redirectWrapped(onRedirect);
 
 		let newTitle = title;
-
+		
 		const staticRenders = await this.resolve({ url, title, onRedirect: redirect.callback, onTitleChange: (title) => newTitle = title });
 
 		if (redirect.didRedirect)
@@ -266,15 +270,15 @@ export class Renderer<P extends {} = {}>
 		};
 	}
 
-	protected readonly resolveAsync = async (component: React.FC<any> = this.component, props: any = this.props, contexts: RenderContextMap = new Map()) =>
+	protected readonly resolveAsync = (url: string) => async (component: React.FC<any> = this.component, props: any = this.props, contexts: RenderContextMap = new Map()) =>
 	{
-		ReactDOMServer.renderToStaticMarkup(this.wrappedComponent({ renderType: "resolving", component, props, contexts }));
+		ReactDOMServer.renderToStaticMarkup(this.wrappedComponent({ url, renderType: "resolving", component, props, contexts }));
 
-		await Async.resolveComponents(this.context.async, this.resolveAsync);
+		await Async.resolveComponents(this.context.async, this.resolveAsync(url));
 
 	}
 
-	protected readonly resolve = async (wrapProps: WrappedAppProps = {}) =>
+	protected readonly resolve = async (wrapProps: WrappedAppProps) =>
 	{
 		const redirecter = this.redirectWrapped(wrapProps.onRedirect || (() => {}));
 
@@ -283,9 +287,9 @@ export class Renderer<P extends {} = {}>
 		if(redirecter.didRedirect)
 			return {};
 
-		await Async.resolveComponents(this.context.async, this.resolveAsync);
+		await Async.resolveComponents(this.context.async, this.resolveAsync(wrapProps.url));
 
-		return await Static.resolveComponents(this.context, this.resolveStatic, this.resolveToStaticHtml);
+		return await Static.resolveComponents(this.context, this.resolveStatic(wrapProps.url), this.resolveToStaticHtml(wrapProps.url));
 	}
 }
 
@@ -305,7 +309,7 @@ type WrappedAppProps = {
 	component?: React.FC<any>;
 	props?: any;
 	contexts?: RenderContextMap;
-	url?: string;
+	url: string;
 	onTitleChange?: (title: string) => any;
 };
 
@@ -316,6 +320,8 @@ export type RenderContext = {
 	renderType: RenderType;
 	async: Async.ContextType;
 	staticContext: Static.ContextType;
+	externalUrls: string[];
+	appUrl: string;
 };
 
 type RenderType = "resolving" | "hydrating" | "render" | "static-render";

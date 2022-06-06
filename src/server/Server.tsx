@@ -82,13 +82,11 @@ export class Server
 
 		Object.keys(apps).forEach(name => 
 		{
-			const { url } = apps[name];
-			appsMap[url] = this.manifest.getAppPaths(name);
+			const { url, title } = apps[name];
+			appsMap[url] = title || name;
 		});
 
-		this.appsSSRData = {
-
-		};
+		this.appsSSRData = appsMap;
 
 		this.host = server?.host || Server.getDefaultHost();
 		this.port = server?.port || 8080;
@@ -127,12 +125,12 @@ export class Server
 			this._apiFallback = apiFallback;
 	}
 
-	protected onAppRoute(appName: string, component: any, appInfo: ConfigAppInfo)
+	protected onAppRoute(appName: string, appUrl: string, component: any, appInfo: ConfigAppInfo)
 	{
 		return async (req: express.Request, res: express.Response) =>
 		{
-			const renderer = new Renderer(this, component, req, res);
-			await renderer.render(appName, appInfo.title || "", this.manifest);
+			const renderer = new Renderer(this, appUrl, component, req, res);
+			await renderer.render(appName, appInfo.title || "");
 		};
 	}
 
@@ -199,14 +197,14 @@ export class Server
 			{
 				url = url.endsWith("*") ? url : `${url}*`;
 				console.log(`Set app ${name} with path ${url}`);
-				this.express.get(url, this.onAppRoute(name, appComponents[name], apps[name]));
+				this.express.get(url, this.onAppRoute(name, apps[name].url, appComponents[name], apps[name]));
 			}
 		}
 
 		if (globalApp)
 		{
 			console.log(`Set app ${globalApp} with path /*`);
-			this.express.get("/*", this.onAppRoute(globalApp, appComponents[globalApp], apps[globalApp]));
+			this.express.get("/*", this.onAppRoute(globalApp, apps[globalApp].url, appComponents[globalApp], apps[globalApp]));
 		}
 
 		this.express.listen(this.port, this.host, () =>

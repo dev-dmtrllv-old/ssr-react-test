@@ -1,6 +1,8 @@
 import React from "react";
+import { render } from "react-dom";
 import { Context } from "./Context";
 import { Renderer } from "./Renderer";
+import { Static } from "./Static";
 
 import { CancelToken, object } from "./utils";
 import { getClassFromProps } from "./utils/react";
@@ -220,12 +222,12 @@ export const Router = ({ children, url, onRedirect, resolve, title, onTitleChang
 		setTitle: (...titleParts: string[]) =>
 		{
 			const t = [...titleParts, title].filter(s => !!s).join(" - ");
-			
-			if(env.isClient && (t === state.title))
+
+			if (env.isClient && (t === state.title))
 				return t;
 
 			onTitleChange(t);
-			
+
 			if (!Renderer.isResolving(renderContext) && !Renderer.isHydrating(renderContext) && env.isClient)
 			{
 				document.title = t;
@@ -298,21 +300,48 @@ export const Redirect = ({ from, exact, to }: RedirectProps) =>
 	return null;
 }
 
-export const Link = ({ to, children, exact, text, className, activeClass = "active", onClick }: React.PropsWithChildren<LinkProps>) =>
+export const Link: React.FC<React.PropsWithChildren<LinkProps>> = (props) =>
 {
+	const { to, children, exact, text, className, activeClass = "active", onClick } = props;
+
 	const { match, routeTo } = useRouter();
+
+	const renderContext = Renderer.useContext();
 
 	const handleClick = (e: React.MouseEvent<HTMLAnchorElement>) =>
 	{
+		const { externalUrls, appUrl } = renderContext;
+
 		onClick && onClick(e);
 		if (!e.isDefaultPrevented() && !e.isPropagationStopped())
-			routeTo(to);
+		{
+			const foundExternal = externalUrls.find(url => to.startsWith(url));
+
+			if ((appUrl === "/"))
+			{
+				if (!foundExternal)
+				{
+					e.preventDefault();
+					e.stopPropagation();
+					routeTo(to);
+				}
+			}
+			else if (to.startsWith(appUrl))
+			{
+				e.preventDefault();
+				e.stopPropagation();
+				routeTo(to);
+			}
+		}
 	}
 
 	const isActive = match(to, exact);
 
+	if (Renderer.isStaticRender(renderContext))
+		return Static.renderAsDynamicComponent(Link, props);
+
 	return (
-		<a className={getClassFromProps("link", { className, [activeClass]: isActive })} onClick={handleClick}>
+		<a href={to} className={getClassFromProps("link", { className, [activeClass]: isActive })} onClick={handleClick}>
 			{text || children}
 		</a>
 	);

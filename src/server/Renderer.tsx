@@ -1,7 +1,6 @@
 import { Request, Response } from "express";
 import type { IonApp } from "../IonApp";
 import { cloneError, isClass } from "../utils/object";
-import { Manifest } from "./Manifest";
 import type { Server } from "./Server";
 import nodeFetch from "node-fetch";
 import { Session } from "./ApiSession";
@@ -13,14 +12,16 @@ import { HtmlProps } from "../Html";
 export class Renderer
 {
 	protected readonly server: Server;
+	protected readonly appUrl: string;
 	protected readonly component: IonApp;
 	protected readonly req: Request;
 	protected readonly res: Response<any, Record<string, any>>;
 	public readonly session: Session;
 
-	constructor(server: Server, component: IonApp, req: Request, res: Response)
+	constructor(server: Server, appUrl: string, component: IonApp, req: Request, res: Response)
 	{
 		this.server = server;
+		this.appUrl = appUrl;
 		this.component = component;
 		this.req = req;
 		this.res = res;
@@ -92,15 +93,22 @@ export class Renderer
 
 			const { Html, appString, asyncStack } = renderResult;
 
-			console.log(renderResult.title);
+			const apps = {};
+
+			Object.keys(this.server.appsSSRData).forEach(k => 
+			{
+				if (k !== this.appUrl)
+					apps[k] = this.server.appsSSRData[k];
+			});
 
 			const props: HtmlProps = {
 				appString,
 				ssrData: {
 					async: asyncStack,
 					api: this.server.apiManifest,
-					apps: this.server.appsSSRData,
+					apps,
 					title: title,
+					appUrl: this.appUrl
 				},
 				styles: this.server.manifest.get(appName, [], "css"),
 				scripts: this.server.manifest.get(appName, [], "js"),
