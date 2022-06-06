@@ -151,7 +151,6 @@ export namespace Async
 	{
 		const createTimeout = () =>
 		{
-			console.log(`created timeout with duration: ${cache.duration} and type: ${cache.type}`);
 			return setTimeout(() => 
 			{
 				if (cache.type === "invalidate")
@@ -162,7 +161,7 @@ export namespace Async
 						error: undefined,
 						invalidated: CACHE_INVALIDATED
 					}
-					console.log("cache invalidated", context.async.cacheDispatchers[id].stateDispatchers)
+
 					ReactDOM.unstable_batchedUpdates(() => 
 					{
 						context.async.cacheDispatchers[id].stateDispatchers.forEach(s => s(context.async.data[id]));
@@ -272,7 +271,6 @@ export namespace Async
 				const newSignature = hash(JSON.stringify(fcProps));
 				if (newSignature != propsSignature)
 				{
-					console.log("prop changed");
 					removeCacheDispatcher(renderContext, idRef.current, cacheDispatchIndex.current);
 					idRef.current = id;
 					resolve(resolver, fcProps).then(d => 
@@ -293,7 +291,6 @@ export namespace Async
 					{
 						if (renderContext.async.didMount)
 						{
-							console.log("resolve");
 							resolve(resolver, fcProps).then(d => 
 							{
 								if (id === createId())
@@ -307,10 +304,8 @@ export namespace Async
 						}
 						else
 						{
-							console.log("mount resolve");
 							addAsyncResolver(renderContext, id, fc, fcProps, resolver, cacheInfo, setState);
 							didResolveOnMount.current = true;
-							console.log(cacheDispatchIndex.current);
 						}
 					}
 				}
